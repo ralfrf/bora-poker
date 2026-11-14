@@ -1,0 +1,61 @@
+# Ajustes pessoais do editor
+.vscode/
+.idea/
+*.code-workspace
+*.local.md
+*.local.json
+
+# Godot: cache, arquivos importados e estado do editor
+.godot/
+.import/
+.nomedia
+~*.dll
+export.cfg
+export_credentials.cfg
+export_presets.cfg
+override.cfg
+*.translation
+.mono/
+mono_crash.*.json
+
+# Android e pacotes gerados
+android/
+local.properties
+build/
+export/
+dist/
+*.apk
+*.aab
+*.idsig
+*.pck
+*.zip
+*.exe
+*.x86_64
+
+# Chaves e segredos
+*.keystore
+*.jks
+*.pem
+*.key
+*.p12
+*.pfx
+*.p8
+*.mobileprovision
+.env
+.env.*
+!.env.example
+secrets/
+google-services.json
+GoogleService-Info.plist
+*service-account*.json
+*credentials*.json
+
+# Registros, temporários e sistema operacional
+*.log
+logs/
+*.tmp
+*.bak
+*.swp
+Thumbs.db
+desktop.ini
+.DS_Store
