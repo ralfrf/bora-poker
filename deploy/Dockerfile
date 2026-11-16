@@ -34,6 +34,8 @@ COPY --chown=jogo:jogo engine ./engine
 COPY --chown=jogo:jogo server ./server
 COPY --chown=jogo:jogo net ./net
 COPY --chown=jogo:jogo bots ./bots
+# A tela também entra: os testes do Wi-Fi e das telas carregam ui/.
+COPY --chown=jogo:jogo ui ./ui
 COPY --chown=jogo:jogo tests ./tests
 RUN chown jogo:jogo /app
 USER jogo

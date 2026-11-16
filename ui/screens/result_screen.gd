@@ -13,6 +13,7 @@ const AvatarButton := preload("res://ui/widgets/avatar_button.gd")
 const Podium := preload("res://ui/widgets/podium.gd")
 const Confetti := preload("res://ui/widgets/confetti.gd")
 const Sfx := preload("res://ui/app/sfx.gd")
+const Protocol := preload("res://server/protocol.gd")
 
 
 ## A tabela do placar, desenhada linha a linha.
@@ -172,6 +173,9 @@ func _build() -> void:
 	_subtitle = Label.new()
 	_subtitle.theme_type_variation = "SmallLabel"
 	_subtitle.text = _summary(my_row, tournament)
+	if final.get("reason", "") == Protocol.R_HOST_GONE:
+		# Wi-Fi: placar calculado em cada celular do último estado da mesa (SPEC 6.4).
+		_subtitle.text = "O anfitrião ficou fora por mais de 2 minutos. " + _subtitle.text
 	add_child(_subtitle)
 	_home = action_button("Início", false)
 	_home.pressed.connect(func() -> void: home.emit())

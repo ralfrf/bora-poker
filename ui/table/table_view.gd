@@ -19,6 +19,12 @@ signal back_requested
 signal help_requested
 ## Toque no botão do histórico: abrir as últimas mãos.
 signal history_requested
+## Toque no balão: abrir o painel de reações.
+signal reactions_requested
+## Quem assiste tocou em "Sentar".
+signal sit_requested
+## O dono tocou em pausar (true) ou retomar (false).
+signal pause_requested(on: bool)
 
 const CardView := preload("res://ui/widgets/card_view.gd")
 const SeatView := preload("res://ui/widgets/seat_view.gd")
@@ -33,6 +39,9 @@ const ChipFlight := preload("res://ui/widgets/chip_flight.gd")
 const SafeArea := preload("res://ui/theme/safe_area.gd")
 const Sfx := preload("res://ui/app/sfx.gd")
 const ListIcon := preload("res://ui/widgets/list_icon_button.gd")
+const GlyphButton := preload("res://ui/widgets/glyph_button.gd")
+const ReactionView := preload("res://ui/widgets/reaction_view.gd")
+const Prefs := preload("res://ui/app/prefs.gd")
 
 const BOARD_CARD: Vector2 = Vector2(44, 62)
 const MY_CARD: Vector2 = Vector2(56, 78)
@@ -91,6 +100,13 @@ var _prompt_kind: String = ""
 var _rebuy_left_ms: int = -1
 ## Escolheu continuar assistindo em vez de recomprar (até a oferta acabar).
 var _watching: bool = false
+## Liga o botão de reações (Wi-Fi e à distância; no offline não há com quem reagir).
+var reactions_enabled: bool = false
+## A mesa espera o anfitrião voltar: os relógios ficam parados (SPEC 6.4).
+var frozen: bool = false
+var _react: GlyphButton = null
+var _pause: GlyphButton = null
+var _react_ready_at: int = 0
 
 var _state: Dictionary = {}
 var _seat_count: int = 8
@@ -151,7 +167,9 @@ func _ready() -> void:
 		_mine.append(card)
 	_bar = ActionBar.new()
 	_bar.acted.connect(func(action: String, amount: int) -> void: acted.emit(action, amount))
-	_bar.sheet_toggled.connect(func(_open: bool) -> void: _place_bar())
+	_bar.sheet_toggled.connect(func(_open: bool) -> void:
+		_place_bar()
+		_refresh_react())
 	add_child(_bar)
 	add_child(_bar.sheet)
 	_waiting = Label.new()
@@ -179,6 +197,16 @@ func _ready() -> void:
 	_history = ListIcon.new()
 	_history.pressed.connect(func() -> void: history_requested.emit())
 	add_child(_history)
+	_react = GlyphButton.new("react")
+	_react.tooltip_text = "Reações"
+	_react.pressed.connect(func() -> void: reactions_requested.emit())
+	_react.visible = false
+	add_child(_react)
+	_pause = GlyphButton.new("pause")
+	_pause.pressed.connect(func() -> void:
+		pause_requested.emit(not bool(_state.get("room", {}).get("paused", false))))
+	_pause.visible = false
+	add_child(_pause)
 	_prompt = VBoxContainer.new()
 	_prompt.add_theme_constant_override("separation", 8)
 	_prompt.alignment = BoxContainer.ALIGNMENT_END
@@ -217,14 +245,18 @@ func _process(delta: float) -> void:
 	var turn_slot: int = _slot_of(_turn_seat)
 	if turn_slot >= 0 and _state.get("table", {}).get("live", false):
 		_seats[turn_slot].pulse = 0.5 + 0.5 * sin(Time.get_ticks_msec() / 1000.0 * 4.5)
-	if _turn_left_ms > 0 and _turn_total_ms > 0:
+	if _react.disabled and Time.get_ticks_msec() >= _react_ready_at:
+		_react.disabled = false
+	# Mesa pausada ou esperando o anfitrião: os relógios não andam.
+	var frozen_now: bool = _frozen()
+	if not frozen_now and _turn_left_ms > 0 and _turn_total_ms > 0:
 		_turn_left_ms = maxi(0, _turn_left_ms - int(delta * 1000.0))
 		if turn_slot >= 0:
 			_seats[turn_slot].set_fraction(float(_turn_left_ms) / _turn_total_ms)
 		if _my_turn and not _warned and _turn_total_ms > WARN_MS and _turn_left_ms <= WARN_MS:
 			_warned = true
 			Sfx.vibrate(400)
-	if _rebuy_left_ms > 0:
+	if not frozen_now and _rebuy_left_ms > 0:
 		var before: int = ceili(_rebuy_left_ms / 1000.0)
 		_rebuy_left_ms = maxi(0, _rebuy_left_ms - int(delta * 1000.0))
 		if ceili(_rebuy_left_ms / 1000.0) != before:
@@ -367,6 +399,12 @@ func render(state: Dictionary) -> void:
 
 	_show_banner(result, members)
 	_show_column(table, you, me, members)
+	# Reações só para quem está sentado; pausa só para o dono, com a partida em andamento.
+	_refresh_react()
+	var owner: bool = str(room.get("owner", "")) == str(you.get("id", "-"))
+	_pause.visible = owner and room.get("phase", "") == "playing"
+	_pause.glyph = "play" if room.get("paused", false) else "pause"
+	_pause.tooltip_text = "Retomar a mesa" if room.get("paused", false) else "Pausar a mesa"
 
 	# Os blinds aparecem na mesa, na marca de quem pôs (SB e BB) e nas fichas dele.
 	_info.text = "Mão %d" % int(table.get("hand", 0))
@@ -388,13 +426,17 @@ func _blind_of(seat_index: int, table: Dictionary, live: bool) -> String:
 ## ausente; ou de quem é a vez.
 func _show_column(table: Dictionary, you: Dictionary, me: Dictionary,
 		members: Dictionary) -> void:
-	var legal: Dictionary = you.get("legal", {})
+	# Mesa pausada: ninguém joga até o dono retomar (o servidor recusaria).
+	var paused: bool = _state.get("room", {}).get("paused", false)
+	var legal: Dictionary = {} if paused else you.get("legal", {})
 	var kind: String = ""
 	if legal.is_empty():
 		if you.has("rebuy_ms"):
 			kind = "watching" if _watching else "rebuy"
 		elif me.get("away", false) and _my_seat >= 0:
 			kind = "away"
+		elif _my_seat < 0 and you.get("can_sit", false):
+			kind = "sit"
 	_bar.visible = not legal.is_empty()
 	_prompt.visible = kind != ""
 	_waiting.visible = legal.is_empty() and kind == ""
@@ -423,6 +465,12 @@ func _show_column(table: Dictionary, you: Dictionary, me: Dictionary,
 			_prompt_text.text = "Você ficou ausente e está desistindo das mãos."
 			_prompt_main.set_content("Voltei", -1)
 			_prompt_alt.visible = false
+		"sit":
+			# Quem assiste e pode sentar (SPEC 4.3): sala aberta ou quem já jogou aqui.
+			_prompt_text.text = "Você está assistindo. Há um lugar livre." + (
+				" Sentar conta como recompra." if you.get("sit_rebuy", false) else "")
+			_prompt_main.set_content("Sentar", -1)
+			_prompt_alt.visible = false
 	_place_prompt()
 
 
@@ -448,6 +496,50 @@ func _on_prompt(main: bool) -> void:
 			render(_state)
 		"away":
 			back_requested.emit()
+		"sit":
+			sit_requested.emit()
+
+
+## Relógios parados: mesa pausada pelo dono, ou esperando o anfitrião voltar.
+func _frozen() -> bool:
+	return frozen or bool(_state.get("room", {}).get("paused", false))
+
+
+## Mostra a reação de quem está nesse lugar, sobre o avatar (SPEC 11.2). Com "silenciar
+## reações", só as suas aparecem.
+func show_reaction(seat_index: int, index: int) -> void:
+	if index < 0 or index >= ReactionView.Protocol.REACTIONS.size():
+		return
+	if Prefs.mute_reactions and seat_index != _my_seat:
+		return
+	var slot: int = _slot_of(seat_index)
+	if slot < 0 or not _seats[slot].visible:
+		return
+	var bubble: ReactionView = ReactionView.new()
+	add_child(bubble)
+	bubble.index = index
+	var seat: Control = _seats[slot]
+	var top: Vector2 = seat.position + Vector2(seat.size.x / 2.0, -4.0)
+	if slot == 0:
+		top = seat.position + Vector2(seat.size.x / 2.0, -10.0)
+	bubble.pop(top)
+
+
+## O botão de reações: só para quem está sentado, e escondido com o painel de aposta
+## aberto (ele fica por cima do canto do painel).
+func _refresh_react() -> void:
+	_react.visible = reactions_enabled and _my_seat >= 0 and not _bar.sheet.visible
+
+
+## Você mandou uma reação: o botão descansa pelo intervalo mínimo do servidor.
+func reaction_sent() -> void:
+	_react_ready_at = Time.get_ticks_msec() + ReactionView.Protocol.REACTION_GAP_MS
+	_react.disabled = true
+
+
+## Onde o painel de reações abre: o canto de baixo à direita fica junto do botão.
+func reactions_corner() -> Vector2:
+	return _react.position + Vector2(_react.size.x, -8.0)
 
 
 ## Fim de mão: quem ganhou e quanto, embaixo das cartas comunitárias.
@@ -477,6 +569,10 @@ func open_bet_sheet() -> void:
 
 
 func _waiting_text(table: Dictionary, you: Dictionary, members: Dictionary) -> String:
+	if _state.get("room", {}).get("paused", false):
+		var owner: bool = str(_state["room"].get("owner", "")) == str(you.get("id", "-"))
+		return "Mesa pausada. Para retomar, toque no botão no alto da mesa." if owner \
+			else "Mesa pausada pelo dono."
 	if _my_seat < 0:
 		return "Assistindo"
 	var to_act: int = int(table.get("to_act", -1))
@@ -684,6 +780,10 @@ func _layout() -> void:
 	_help.position = _exit.position + Vector2(_exit.size.x + 8.0, 0)
 	_history.size = Vector2(40, 40)
 	_history.position = _help.position + Vector2(48.0, 0)
+	_react.size = Vector2(40, 40)
+	_react.position = Vector2(area.end.x - MARGIN - 40.0, area.end.y - MARGIN - 40.0).round()
+	_pause.size = Vector2(40, 40)
+	_pause.position = Vector2(area.end.x - MARGIN - 40.0, area.position.y + MARGIN).round()
 	if _banner.visible:
 		_banner.place_at(_banner_point())
 

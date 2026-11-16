@@ -23,6 +23,7 @@ var wifi: Dictionary = {}       ## escolhas da última sala criada no Wi-Fi
 var device: String = ""
 var sound: bool = true
 var vibration: bool = true
+var mute_reactions: bool = false
 
 var _path: String = PATH
 
@@ -47,6 +48,7 @@ func load_file(path: String = PATH) -> void:
 		wifi = raw_wifi if typeof(raw_wifi) == TYPE_DICTIONARY else {}
 		sound = _flag(file.get_value("config", "sons", true), true)
 		vibration = _flag(file.get_value("config", "vibracao", true), true)
+		mute_reactions = _flag(file.get_value("config", "silenciar_reacoes", false), false)
 	if device.length() < 16:
 		device = Crypto.new().generate_random_bytes(12).hex_encode()
 	apply()
@@ -62,6 +64,7 @@ func save() -> bool:
 	file.set_value("wifi", "escolhas", wifi)
 	file.set_value("config", "sons", sound)
 	file.set_value("config", "vibracao", vibration)
+	file.set_value("config", "silenciar_reacoes", mute_reactions)
 	return file.save(_path) == OK
 
 
@@ -78,6 +81,7 @@ func set_nick(text: String) -> void:
 func apply() -> void:
 	Prefs.sound = sound
 	Prefs.vibration = vibration
+	Prefs.mute_reactions = mute_reactions
 
 
 static func _flag(raw: Variant, fallback: bool) -> bool:

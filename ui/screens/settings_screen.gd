@@ -1,6 +1,6 @@
 extends "res://ui/screens/screen.gd"
-## Configurações (SPEC 11.3): sons e vibração. Cada troca vale na hora e fica gravada
-## no perfil. "Silenciar reações" chega com as reações, na etapa 4.
+## Configurações (SPEC 11.3): sons, vibração e silenciar reações. Cada troca vale na hora
+## e fica gravada no perfil.
 
 signal back
 
@@ -13,6 +13,7 @@ var profile: Profile = null
 var _title: Label = null
 var _sound: ToggleRow = null
 var _vibration: ToggleRow = null
+var _mute: ToggleRow = null
 var _done: Button = null
 
 
@@ -39,6 +40,12 @@ func _build() -> void:
 		_save()
 		Sfx.vibrate(200))
 	add_child(_vibration)
+	_mute = ToggleRow.new("Silenciar reações", "Não mostra os emojis e as frases dos outros na mesa",
+		profile.mute_reactions)
+	_mute.toggled.connect(func(on: bool) -> void:
+		profile.mute_reactions = on
+		_save())
+	add_child(_mute)
 	_done = action_button("Pronto", true)
 	_done.pressed.connect(func() -> void: back.emit())
 	add_child(_done)
@@ -55,7 +62,7 @@ func _layout() -> void:
 	place(_title, Rect2(b.position.x, b.position.y, b.size.x, 34))
 	var w: float = minf(b.size.x, 460.0)
 	var y: float = b.position.y + 48.0
-	for row: ToggleRow in [_sound, _vibration]:
+	for row: ToggleRow in [_sound, _vibration, _mute]:
 		place(row, Rect2(b.position.x, y, w, ToggleRow.ROW_H))
 		row.queue_redraw()
 		y += ToggleRow.ROW_H + 10.0

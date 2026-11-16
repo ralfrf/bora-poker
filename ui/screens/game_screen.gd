@@ -13,6 +13,7 @@ const TableView := preload("res://ui/table/table_view.gd")
 const Dialog := preload("res://ui/widgets/dialog.gd")
 const RankingSheet := preload("res://ui/widgets/ranking_sheet.gd")
 const HistorySheet := preload("res://ui/widgets/history_sheet.gd")
+const ReactionSheet := preload("res://ui/widgets/reaction_sheet.gd")
 const Protocol := preload("res://server/protocol.gd")
 
 var _game: GameSession = null
@@ -20,6 +21,7 @@ var _table: TableView = null
 var _dialog: Dialog = null
 var _ranking: RankingSheet = null
 var _history: HistorySheet = null
+var _reactions: ReactionSheet = null
 var _members: Array = []
 var _done: bool = false
 var _status: PanelContainer = null
@@ -42,6 +44,11 @@ func _ready() -> void:
 	_table.leave_requested.connect(_ask_leave)
 	_table.help_requested.connect(func() -> void: _ranking.open())
 	_table.history_requested.connect(open_history)
+	_table.reactions_requested.connect(open_reactions)
+	_table.sit_requested.connect(func() -> void: _game.sit_at(-1))
+	_table.pause_requested.connect(func(on: bool) -> void:
+		_game.owner(Protocol.CMD_PAUSE if on else Protocol.CMD_RESUME))
+	_table.reactions_enabled = _game.has_reactions()
 	add_child(_table)
 	_ranking = RankingSheet.new()
 	_ranking.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -49,6 +56,12 @@ func _ready() -> void:
 	_history = HistorySheet.new()
 	_history.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(_history)
+	_reactions = ReactionSheet.new()
+	_reactions.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_reactions.chosen.connect(func(index: int) -> void:
+		_game.react(index)
+		_table.reaction_sent())
+	add_child(_reactions)
 	_dialog = Dialog.new()
 	_dialog.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_dialog.chosen.connect(_on_dialog)
@@ -84,6 +97,8 @@ func _process(_delta: float) -> void:
 							break
 			Protocol.HANDS:
 				_history.set_hands(message.get("hands", []), _game.my_id)
+			Protocol.REACTION:
+				_table.show_reaction(int(message.get("seat", -1)), int(message.get("r", -1)))
 			Protocol.CLOSED:
 				_finish(message)
 				return
@@ -94,6 +109,7 @@ func _process(_delta: float) -> void:
 	if _game.failure() != "":
 		_finish({})
 		return
+	_table.frozen = _game.waiting_host()
 	_show_status(_game.status_text())
 
 
@@ -159,6 +175,11 @@ func open_history() -> void:
 	_game.history()
 
 
+## Abre o painel de reações junto do botão (usado também nas fotos).
+func open_reactions() -> void:
+	_reactions.open(_table.reactions_corner())
+
+
 ## Abre o ranking das mãos por cima da mesa (usado também nas fotos).
 func open_ranking() -> void:
 	_ranking.open()
@@ -191,7 +212,9 @@ func _finish(final: Dictionary) -> void:
 
 ## Botão "voltar" do Android: pergunta antes de sair.
 func go_back() -> bool:
-	if _history.visible:
+	if _reactions.visible:
+		_reactions.close()
+	elif _history.visible:
 		_history.close()
 	elif _ranking.visible:
 		_ranking.close()

@@ -68,6 +68,9 @@ func _ready() -> void:
 			screen = _game("game", seats, false, true)
 		"history":
 			screen = _game("history", seats)
+		"reactions", "spectator", "paused":
+			# Etapa 4, parte B: painel e balões de reação, quem assiste com "Sentar" e mesa pausada.
+			screen = _game("game", seats, false, false, screen_name)
 		"watching":
 			# Recompra recusada por enquanto: assistindo, com "Voltar ao jogo".
 			screen = _game("rebuy", seats, true)
@@ -122,7 +125,8 @@ func _waiting_game(seats: int) -> WifiGame:
 
 
 ## Partida de verdade, com relógio manual: anda até a situação pedida e congela.
-func _game(kind: String, seats: int, watching: bool = false, ranking: bool = false) -> Control:
+func _game(kind: String, seats: int, watching: bool = false, ranking: bool = false,
+		extra: String = "") -> Control:
 	var clock: Clock = Clock.new(true)
 	var game: OfflineGame = OfflineGame.new(clock, FAST, func() -> int:
 		_seed += 1
@@ -171,7 +175,19 @@ func _game(kind: String, seats: int, watching: bool = false, ranking: bool = fal
 	screen.ready.connect(func() -> void:
 		screen.set_process(false)
 		screen.get_child(0).set("_watching", watching)
-		screen.get_child(0).call("render", target)
+		var table_view: Control = screen.get_child(0)
+		if extra == "spectator":
+			target["you"] = {"id": "assistindo", "seat": -1, "can_sit": true, "sit_rebuy": false}
+		elif extra == "paused":
+			target["room"]["paused"] = true
+			target["room"]["phase"] = "playing"
+		table_view.set("reactions_enabled", extra == "reactions")
+		table_view.call("render", target)
+		if extra == "reactions":
+			screen.open_reactions()
+			var seated: Array = target["table"]["seats"]
+			table_view.call("show_reaction", int(seated[1]["seat"]), 1)
+			table_view.call("show_reaction", int(seated[-1]["seat"]), 7)
 		if ranking:
 			screen.open_ranking()
 		if kind == "history":

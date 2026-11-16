@@ -19,7 +19,8 @@ const MAX_ERRORS: int = 10
 const MAX_HANDS_PER_GAME: int = 200
 const STEP_MS: int = 1000
 const STUCK_TICKS: int = 300
-const YOU_KEYS: Array[String] = ["cards", "legal", "id", "seat", "rebuy_ms", "return_offer"]
+const YOU_KEYS: Array[String] = ["cards", "legal", "id", "seat", "rebuy_ms", "return_offer",
+	"can_sit", "sit_rebuy"]
 const SEAT_KEYS: Array[String] = ["seat", "id", "stack", "state", "rebuys", "in_hand", "bet",
 	"total", "folded", "all_in", "cards"]
 const ROOM_CONFIG: Dictionary = {"hand_gap_ms": 0, "showdown_gap_ms": 0, "bot_min_ms": 0,

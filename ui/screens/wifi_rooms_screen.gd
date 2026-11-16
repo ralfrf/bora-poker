@@ -232,9 +232,10 @@ func _refresh() -> void:
 			var parts: Array[String] = [FORMAT_NAMES.get(room["format"], ""),
 				"%d de %d lugares" % [int(room["players"]), int(room["seats"])]]
 			if room["phase"] == "playing":
-				parts.append("em partida" + (", com vaga" if room["open"] else ""))
+				# Sem vaga, dá para entrar assistindo (SPEC 4.3).
+				parts.append("em partida" + (", com vaga" if room["open"] else ", para assistir"))
 			elif not room["open"]:
-				parts.append("cheia")
+				parts.append("cheia, para assistir")
 			row.detail = " · ".join(parts)
 			row.queue_redraw()
 	_layout()

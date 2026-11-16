@@ -427,7 +427,13 @@ func scoreboard() -> Array[Dictionary]:
 			"held": cashbox.held(seat.id), "rebuys": seat.rebuys,
 			"net": cashbox.net(seat.id, chips), "state": seat.state, "place": seat.place,
 		})
-	if format == TOURNAMENT:
+	sort_scoreboard(rows, format == TOURNAMENT)
+	return rows
+
+
+## A ordem do placar (também usada no placar calculado sem o anfitrião, net/host_lost.gd).
+static func sort_scoreboard(rows: Array, tournament: bool) -> void:
+	if tournament:
 		rows.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 			if int(a["place"]) != int(b["place"]):
 				return int(a["place"]) < int(b["place"])
@@ -439,7 +445,6 @@ func scoreboard() -> Array[Dictionary]:
 			if int(a["net"]) != int(b["net"]):
 				return int(a["net"]) > int(b["net"])
 			return str(a["id"]) < str(b["id"]))
-	return rows
 
 
 ## Torneio: quem ficou em 1º, 2º e 3º. [{place, seat, id}].

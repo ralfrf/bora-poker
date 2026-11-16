@@ -5,3 +5,4 @@ extends RefCounted
 
 static var sound: bool = true
 static var vibration: bool = true
+static var mute_reactions: bool = false   ## não mostra as reações dos outros

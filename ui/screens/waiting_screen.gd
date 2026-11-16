@@ -233,6 +233,7 @@ func _refresh() -> void:
 			watchers.append(str(member.get("nick", "")))
 	_seat_ids.clear()
 	var players: int = 0
+	var can_sit: bool = bool(state.get("you", {}).get("can_sit", false))
 	for i in _chips.size():
 		var chip: SeatChip = _chips[i]
 		chip.visible = i < seats
@@ -244,7 +245,9 @@ func _refresh() -> void:
 			chip.nick = str(member.get("nick", ""))
 			chip.avatar = int(member.get("avatar", 0))
 			chip.detail = _member_text(member, room)
-		chip.disabled = chip.empty or (not owner and member.get("id") != _game.my_id)
+		# Quem assiste (entrou com a sala cheia) toca num lugar livre para sentar.
+		chip.disabled = (chip.empty and not can_sit) \
+			or (not chip.empty and not owner and member.get("id") != _game.my_id)
 		chip.queue_redraw()
 	_watching.text = "Assistindo: " + ", ".join(watchers) if not watchers.is_empty() else ""
 	var can_add: bool = owner and players < seats
@@ -262,6 +265,9 @@ func _refresh() -> void:
 		_status.text = ("Precisa de pelo menos 2 na mesa (bots contam). " if players < 2
 			else "Toque num bot ou jogador para tirar da sala. ") \
 			+ "No seu lugar, para trocar o avatar."
+	elif int(state.get("you", {}).get("seat", -1)) < 0:
+		_status.text = "Toque num lugar livre para sentar." if can_sit \
+			else "A sala está cheia: você está assistindo. Quando abrir um lugar, toque nele."
 	else:
 		_status.text = "Esperando o dono começar a partida. Toque no seu lugar para " \
 			+ "trocar o avatar."
@@ -343,7 +349,12 @@ func _layout() -> void:
 
 
 func _on_seat(index: int) -> void:
-	if index >= _seat_ids.size() or _seat_ids[index] == "":
+	if index >= _seat_ids.size():
+		return
+	if _seat_ids[index] == "":
+		# Lugar livre: quem está assistindo senta nele.
+		if _game.last_state.get("you", {}).get("can_sit", false):
+			_game.sit_at(index)
 		return
 	var target: String = _seat_ids[index]
 	if target == _game.my_id:

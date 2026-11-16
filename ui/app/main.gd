@@ -36,7 +36,7 @@ func _ready() -> void:
 	profile.load_file()
 	if profile.is_new():
 		_show_profile(true)
-	else:
+	elif not _resume_wifi():
 		_show_home()
 
 
@@ -44,6 +44,40 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		if _screen == null or not _screen.call("go_back"):
 			get_tree().quit()
+	elif what == NOTIFICATION_APPLICATION_PAUSED:
+		# O Android pode fechar o app em segundo plano: o anfitrião grava a sala agora.
+		if _session != null and _session.has_method("app_paused"):
+			_session.call("app_paused")
+
+
+## O app abriu e há uma sala do Wi-Fi gravada por este celular como anfitrião (o Android
+## fechou o app no meio da partida, SPEC 6.4). Em até 2 minutos, a sala volta e os
+## convidados reconectam; depois disso, mostra o placar calculado. Devolve se tratou.
+func _resume_wifi() -> bool:
+	var saved: Dictionary = WifiGame.read_save()
+	if saved.is_empty():
+		return false
+	var age: int = int(saved["age_ms"])
+	if age > WifiGame.RECONNECT_MS:
+		DirAccess.remove_absolute(WifiGame.SAVE_PATH)
+		var final: Dictionary = WifiGame.abandoned_final(saved)
+		if final.is_empty():
+			return false
+		var members: Array = saved.get("state", {}).get("room", {}).get("members", [])
+		_show_result(final, members, str(saved.get("host_id", "")), true)
+		return true
+	var game: WifiGame = WifiGame.new()
+	game.save_path = WifiGame.SAVE_PATH
+	if not game.resume(saved, age):
+		DirAccess.remove_absolute(WifiGame.SAVE_PATH)
+		_show_rooms(game.error_text)
+		return true
+	_session = game
+	if str(game.last_state.get("room", {}).get("phase", "")) == "lobby":
+		_show_waiting(game)
+	else:
+		_play_wifi(game)
+	return true
 
 
 func _show(screen: Control) -> void:
@@ -131,6 +165,7 @@ func _show_room_setup() -> void:
 
 func _host_room(choice: Dictionary) -> void:
 	var game: WifiGame = WifiGame.new()
+	game.save_path = WifiGame.SAVE_PATH   # o anfitrião grava a sala (SPEC 6.4)
 	if not game.host(profile.nick, profile.avatar, profile.device,
 			OfflineOptions.build_room(choice)):
 		_show_rooms(game.error_text)
@@ -140,6 +175,7 @@ func _host_room(choice: Dictionary) -> void:
 
 func _join_room(ip: String, port: int) -> void:
 	var game: WifiGame = WifiGame.new()
+	game.save_path = WifiGame.SAVE_PATH   # vale se a sala passar para este celular
 	game.join(ip, port, profile.nick, profile.avatar, profile.device)
 	_show_waiting(game)
 

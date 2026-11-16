@@ -20,8 +20,8 @@ const OWNER: String = "owner"               ## {cmd, ...} (só o dono)
 const PING: String = "ping"                 ## {}: batimento, a cada 2 s na rede
 const RETURN_CHOICE: String = "return_choice"   ## {keep}: volta com as fichas de antes ou as iniciais
 const PROFILE: String = "profile"           ## {avatar}: troca o avatar (só na sala de espera)
-# Reservadas para as próximas etapas.
-const REACT: String = "react"                   ## etapa 4: reação
+const REACT: String = "react"               ## {r}: reação (índice em REACTIONS), só quem está sentado
+# Reservada para a próxima etapa.
 const RESUME_ROOM: String = "resume_room"       ## etapa 5: devolver o resumo da sala
 
 # Do servidor para o app.
@@ -37,8 +37,8 @@ const PONG: String = "pong"         ## {}
 const HANDS: String = "hands"       ## {hands}: as últimas mãos, da mais recente (server/hand_log.gd)
 const MOVE: String = "move"         ## {ip, port, room, nick, snapshot?}: Wi-Fi, a sala passa para o celular de nick;
                                     ## só ele recebe o snapshot (com os códigos dos aparelhos)
-# Reservadas para as próximas etapas.
-const REACTION: String = "reaction"           ## etapa 4
+const REACTION: String = "reaction" ## {seat, r}: alguém reagiu; vai a todos, fora do state
+# Reservada para a próxima etapa.
 const SUMMARY: String = "summary"             ## etapa 5: resumo assinado
 
 # Comandos do dono (campo "cmd" de OWNER).
@@ -68,6 +68,16 @@ const R_KICKED: String = "kicked"
 const R_OWNER: String = "owner"         ## o dono encerrou a sala
 const R_FINISHED: String = "finished"   ## a partida acabou
 const R_EMPTY: String = "empty"         ## não sobrou nenhum humano
+const R_HOST_GONE: String = "host_gone" ## Wi-Fi: o anfitrião sumiu e não voltou; placar calculado
+                                        ## em cada celular a partir do último state (net/host_lost.gd)
+
+## Reações prontas (SPEC 11.2): as REACTION_FACES primeiras são carinhas desenhadas pelo
+## jogo (ui/widgets/reaction_view.gd); as outras são frases. Sem texto livre.
+const REACTIONS: Array[String] = ["feliz", "risada", "uau", "bravo", "triste", "legal",
+	"Boa mão!", "Blefou!", "Vai logo!", "Que sorte!", "Bem jogado!", "Foi mal!"]
+const REACTION_FACES: int = 6
+## Intervalo mínimo entre duas reações da mesma pessoa (limite de frequência).
+const REACTION_GAP_MS: int = 2500
 
 
 static func error(code: String, text: String) -> Dictionary:

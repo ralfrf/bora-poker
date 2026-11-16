@@ -122,6 +122,26 @@ func status_text() -> String:
 	return ""
 
 
+## Verdadeiro enquanto a mesa espera o anfitrião voltar (Wi-Fi): os relógios param.
+func waiting_host() -> bool:
+	return false
+
+
+## Reações valem só com outras pessoas na mesa (Wi-Fi e à distância).
+func has_reactions() -> bool:
+	return false
+
+
+## Manda uma reação (índice em Protocol.REACTIONS).
+func react(index: int) -> void:
+	send({"t": Protocol.REACT, "r": index})
+
+
+## Senta num lugar livre (quem está assistindo); seat -1 = o primeiro livre.
+func sit_at(seat: int) -> void:
+	send({"t": Protocol.SIT, "seat": seat})
+
+
 ## Por que a sessão acabou sem placar (conexão perdida, expulso); "" se não acabou.
 func failure() -> String:
 	return ""
