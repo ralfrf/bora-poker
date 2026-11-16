@@ -31,6 +31,9 @@ RUN useradd --create-home jogo
 WORKDIR /app
 COPY --chown=jogo:jogo project.godot ./
 COPY --chown=jogo:jogo engine ./engine
+COPY --chown=jogo:jogo server ./server
+COPY --chown=jogo:jogo net ./net
+COPY --chown=jogo:jogo bots ./bots
 COPY --chown=jogo:jogo tests ./tests
 RUN chown jogo:jogo /app
 USER jogo

@@ -2,4 +2,7 @@
 *
 !project.godot
 !engine/
+!server/
+!net/
+!bots/
 !tests/

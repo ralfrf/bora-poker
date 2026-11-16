@@ -37,7 +37,7 @@ const STATE_SCHEMA: Dictionary = {
 }
 const SEAT_SCHEMA: Dictionary = {
 	"index": TYPE_INT, "id": TYPE_STRING, "stack": TYPE_INT, "state": TYPE_STRING,
-	"rebuys": TYPE_INT, "place": TYPE_INT, "expired": TYPE_BOOL,
+	"rebuys": TYPE_INT, "place": TYPE_INT, "expired": TYPE_BOOL, "away": TYPE_BOOL,
 }
 
 
@@ -51,6 +51,7 @@ class Seat:
 	var rebuys: int = 0
 	var place: int = 0            ## torneio: colocação final; 0 enquanto está no jogo
 	var expired: bool = false     ## saiu e o prazo de volta venceu: se voltar, é jogador novo
+	var away: bool = false        ## clássico: ausente, fica fora das mãos e não paga blinds
 
 
 var format: String = CLASSIC
@@ -195,11 +196,24 @@ func expire_held(id: String) -> String:
 	return ""
 
 
-## Lugares que jogam a próxima mão: quem está sentado e tem fichas.
+## Clássico: marca ou desmarca um jogador como ausente (SPEC 5). O ausente fica fora das
+## mãos e não paga blinds; vale a partir da mão seguinte. No torneio o ausente continua
+## recebendo cartas, e é o servidor que desiste por ele.
+func set_away(index: int, away: bool) -> String:
+	var seat: Seat = seat_at(index)
+	if seat == null:
+		return "lugar vazio"
+	if format != CLASSIC:
+		return "no torneio o ausente continua nas mãos"
+	seat.away = away
+	return ""
+
+
+## Lugares que jogam a próxima mão: quem está sentado, tem fichas e não está ausente.
 func participants() -> Array[int]:
 	var list: Array[int] = []
 	for seat in seats:
-		if seat.state == PLAYING and seat.stack > 0:
+		if seat.state == PLAYING and seat.stack > 0 and not seat.away:
 			list.append(seat.index)
 	list.sort()
 	return list
@@ -311,6 +325,18 @@ func rebuy(index: int) -> String:
 	return ""
 
 
+## Verdadeiro se esse participante já sentou nesta mesa alguma vez.
+func knows(id: String) -> bool:
+	return _record(id) != null
+
+
+## Verdadeiro se quem está fora da mesa (saiu ou virou espectador) ainda pode sentar de
+## novo gastando uma recompra.
+func can_return_with_rebuy(id: String) -> bool:
+	var seat: Seat = _record(id)
+	return seat != null and seat.state == OUT and not seat.expired and _can_rebuy(seat)
+
+
 ## Quem zerou e não recompra vira espectador.
 func decline_rebuy(index: int) -> String:
 	var seat: Seat = seat_at(index)
@@ -335,13 +361,17 @@ func set_blinds(small: int, big: int) -> String:
 
 ## Clássico: sobra um só com fichas e ninguém pode recomprar.
 ## Torneio: um jogador tem todas as fichas.
+## Um ausente com fichas continua contando: a partida não acaba por ele estar fora.
 func is_over() -> bool:
-	if hand_number == 0 or hand_in_progress() or participants().size() > 1:
+	if hand_number == 0 or hand_in_progress():
 		return false
+	var with_chips: int = 0
 	for seat in seats:
 		if seat.state == BUSTED:
 			return false
-	return true
+		if seat.state == PLAYING and seat.stack > 0:
+			with_chips += 1
+	return with_chips <= 1
 
 
 ## Placar: [{seat, id, chips, held, rebuys, net, state, place}].
@@ -414,6 +444,7 @@ func to_dict() -> Dictionary:
 		seat_list.append({
 			"index": seat.index, "id": seat.id, "stack": seat.stack, "state": seat.state,
 			"rebuys": seat.rebuys, "place": seat.place, "expired": seat.expired,
+			"away": seat.away,
 		})
 	var saved_hand: Variant = null
 	if hand != null:
@@ -476,6 +507,7 @@ func _load(saved: Dictionary) -> String:
 		seat.rebuys = entry["rebuys"]
 		seat.place = entry["place"]
 		seat.expired = entry["expired"]
+		seat.away = entry["away"]
 		if seat.id == "" or ids.has(seat.id):
 			return "jogador repetido ou sem identificação"
 		if seat.stack < 0 or seat.rebuys < 0 or seat.place < 0:
@@ -535,6 +567,7 @@ func _sit(seat: Seat, index: int, stack: int) -> void:
 	seat.stack = stack
 	seat.state = PLAYING
 	seat.expired = false
+	seat.away = false
 
 
 ## Depois de cada passo da mão: copia as fichas para os lugares e, se a mão acabou,
