@@ -56,6 +56,8 @@ static func build(direction: Dictionary) -> Theme:
 	_label(theme, "PotLabel", display, LARGE, colors["text"])
 	_label(theme, "TitleLabel", display, LARGE, colors["text"])
 	_label(theme, "DimLabel", text_font, BODY, colors["text_dim"])
+	_label(theme, "NumberLabel", display, BODY, colors["text"])
+	_label(theme, "StrongLabel", text_strong, BODY, colors["text"])
 
 	var radius: int = direction["radius"]["button"]
 	var border: int = direction["style"]["button_border"]
@@ -65,8 +67,103 @@ static func build(direction: Dictionary) -> Theme:
 		colors["on_accent"], radius, 0, colors)
 	_button(theme, "QuietButton", text_font, Color(colors["surface_line"], 0.55),
 		colors["button_line"], colors["text"], radius, 1 if border == 2 else 0, colors)
+	_choice(theme, text_strong, colors, radius)
+	_line_edit(theme, text_font, colors, radius)
+	_panels(theme, colors, direction["radius"]["panel"])
 	_slider(theme, colors)
+	theme.set_icon("chip", TOKENS, _chip_icon(colors["chip_0"], colors["chip_mark"]))
 	return theme
+
+
+## Ícone de ficha de 14 px, para pôr ao lado de valores em textos e botões.
+static func _chip_icon(fill: Color, mark: Color) -> Texture2D:
+	var size: int = 56
+	var image: Image = Image.create_empty(size, size, false, Image.FORMAT_RGBA8)
+	var center: Vector2 = Vector2(size, size) / 2.0 - Vector2(0.5, 0.5)
+	var r: float = size / 2.0 - 1.0
+	for y in size:
+		for x in size:
+			var offset: Vector2 = Vector2(x, y) - center
+			var d: float = offset.length()
+			var color: Color = fill.darkened(0.25)
+			if d < r * 0.9:
+				color = fill
+			var a: float = fposmod(offset.angle(), TAU / 6.0) - TAU / 12.0
+			if d > r * 0.66 and d < r * 0.88 and absf(a) < 0.17:
+				color = mark
+			if absf(d - r * 0.5) < r * 0.07:
+				color = fill.lerp(mark, 0.85)
+			color.a = clampf(r - d, 0.0, 1.0)
+			image.set_pixel(x, y, color)
+	image.resize(14, 14, Image.INTERPOLATE_LANCZOS)
+	return ImageTexture.create_from_image(image)
+
+
+## Botão de escolha (opções da sala, modos, avatares): apagado quando solto e com o
+## contorno e o fundo do destaque quando escolhido.
+static func _choice(theme: Theme, font: Font, colors: Dictionary, radius: int) -> void:
+	_button(theme, "ChoiceButton", font, Color(colors["surface_line"], 0.45),
+		Color(colors["surface_line"], 0.0), colors["text_dim"], radius, 0, colors)
+	var chosen: StyleBoxFlat = _box(Color(colors["accent"], 0.16), radius)
+	chosen.set_border_width_all(2)
+	chosen.border_color = colors["accent"]
+	chosen.content_margin_left = 4
+	chosen.content_margin_right = 4
+	chosen.content_margin_top = 6
+	chosen.content_margin_bottom = 6
+	for state: String in ["normal", "hover", "disabled"]:
+		var box: StyleBoxFlat = theme.get_stylebox(state, "ChoiceButton").duplicate()
+		box.content_margin_left = 4
+		box.content_margin_right = 4
+		theme.set_stylebox(state, "ChoiceButton", box)
+	theme.set_stylebox("pressed", "ChoiceButton", chosen)
+	theme.set_stylebox("hover_pressed", "ChoiceButton", chosen)
+	theme.set_font_size("font_size", "ChoiceButton", BODY)
+	theme.set_color("font_hover_color", "ChoiceButton", colors["text"])
+	theme.set_color("font_pressed_color", "ChoiceButton", colors["text"])
+	theme.set_color("font_hover_pressed_color", "ChoiceButton", colors["text"])
+
+
+static func _line_edit(theme: Theme, font: Font, colors: Dictionary, radius: int) -> void:
+	var normal: StyleBoxFlat = _box(colors["surface"], radius)
+	normal.set_border_width_all(1)
+	normal.border_color = colors["button_line"]
+	normal.content_margin_left = 14
+	normal.content_margin_right = 14
+	normal.content_margin_top = 8
+	normal.content_margin_bottom = 8
+	var focus: StyleBoxFlat = normal.duplicate()
+	focus.draw_center = false
+	focus.set_border_width_all(2)
+	focus.border_color = colors["accent"]
+	theme.set_stylebox("normal", "LineEdit", normal)
+	theme.set_stylebox("read_only", "LineEdit", normal)
+	theme.set_stylebox("focus", "LineEdit", focus)
+	theme.set_font("font", "LineEdit", font)
+	theme.set_font_size("font_size", "LineEdit", LARGE)
+	theme.set_color("font_color", "LineEdit", colors["text"])
+	theme.set_color("font_placeholder_color", "LineEdit", Color(colors["text_dim"], 0.7))
+	theme.set_color("caret_color", "LineEdit", colors["accent"])
+	theme.set_color("selection_color", "LineEdit", Color(colors["accent"], 0.35))
+	theme.set_constant("caret_width", "LineEdit", 2)
+
+
+## Painel de cartão (modos do início, placar) e de diálogo (com sombra).
+static func _panels(theme: Theme, colors: Dictionary, radius: int) -> void:
+	var card: StyleBoxFlat = _box(Color(colors["surface"], 0.92), radius)
+	card.set_border_width_all(1)
+	card.border_color = colors["surface_line"]
+	card.set_content_margin_all(12)
+	theme.set_type_variation("CardPanel", "PanelContainer")
+	theme.set_stylebox("panel", "CardPanel", card)
+	var dialog: StyleBoxFlat = card.duplicate()
+	dialog.bg_color = colors["surface"]
+	dialog.shadow_color = Color(colors["shadow"], 0.5)
+	dialog.shadow_size = 18
+	dialog.shadow_offset = Vector2(0, 6)
+	dialog.set_content_margin_all(18)
+	theme.set_type_variation("DialogPanel", "PanelContainer")
+	theme.set_stylebox("panel", "DialogPanel", dialog)
 
 
 static func _label(theme: Theme, type_name: String, font: Font, size: int,

@@ -36,6 +36,14 @@ func avatar_center() -> Vector2:
 	return Vector2(x, SIZE.y / 2.0)
 
 
+## Pulsação do destaque de quem está na vez (0 a 1), atualizada pela mesa.
+var pulse: float = 0.0:
+	set(value):
+		pulse = value
+		if data.get("turn", false):
+			queue_redraw()
+
+
 func set_fraction(fraction: float) -> void:
 	data["fraction"] = fraction
 	queue_redraw()
@@ -55,8 +63,11 @@ func _draw() -> void:
 	var ring_color: Color = accent
 	if turn and float(data.get("fraction", 1.0)) < 0.25:
 		ring_color = get_theme_color("danger", T)
-	if turn or winner:
-		draw_circle(center, AVATAR / 2.0 + 7.0, Color(ring_color, 0.16), true, -1.0, true)
+	if turn:
+		draw_circle(center, AVATAR / 2.0 + 6.0 + pulse * 3.0,
+			Color(ring_color, 0.12 + pulse * 0.14), true, -1.0, true)
+	elif winner:
+		draw_circle(center, AVATAR / 2.0 + 7.0, Color(ring_color, 0.22), true, -1.0, true)
 
 	# Placa: vai da ponta oposta até o meio do avatar.
 	var plate_x: float = 0.0 if side > 0.0 else AVATAR / 2.0

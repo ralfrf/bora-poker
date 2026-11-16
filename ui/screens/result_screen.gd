@@ -1,0 +1,183 @@
+extends "res://ui/screens/screen.gd"
+## Placar final (clássico) ou classificação do torneio (SPEC 11.1, passo 7). Depois
+## dele vem o início; o anúncio de tela cheia, quando existir, entra entre os dois
+## (SPEC 12), nunca durante a partida.
+
+signal again
+signal home
+
+const Money := preload("res://engine/money.gd")
+const Paint := preload("res://ui/widgets/paint.gd")
+const AvatarButton := preload("res://ui/widgets/avatar_button.gd")
+
+
+## A tabela do placar, desenhada linha a linha.
+class Board:
+	extends Control
+
+	## Linhas: {nick, avatar, me, place, chips, net}. tournament: mostra o lugar
+	## em vez do saldo.
+	var rows: Array = []
+	var tournament: bool = false
+	const HEAD: float = 22.0
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func row_height() -> float:
+		return clampf((size.y - HEAD) / maxf(rows.size(), 1.0), 24.0, 40.0)
+
+	func _draw() -> void:
+		var T: String = "Tokens"
+		var text_font: Font = get_theme_font("strong", T)
+		var number_font: Font = get_theme_font("display", T)
+		var small: int = get_theme_font_size("small", T)
+		var body: int = get_theme_font_size("body", T)
+		var dim: Color = get_theme_color("text_dim", T)
+		var ink: Color = get_theme_color("text", T)
+		var accent: Color = get_theme_color("accent", T)
+		var chips_x: float = size.x * 0.62
+		var net_x: float = size.x
+		var head_font: Font = get_theme_font("text", T)
+		draw_string(head_font, Vector2(0, 14), "Jogador", HORIZONTAL_ALIGNMENT_LEFT, -1, small, dim)
+		draw_string(head_font, Vector2(chips_x - 120.0, 14), "Fichas", HORIZONTAL_ALIGNMENT_RIGHT,
+			120, small, dim)
+		draw_string(head_font, Vector2(net_x - 120.0, 14),
+			"Lugar" if tournament else "Saldo", HORIZONTAL_ALIGNMENT_RIGHT, 120, small, dim)
+		var h: float = row_height()
+		var colors: Array[Color] = AvatarButton.colors_of(self)
+		for i in rows.size():
+			var row: Dictionary = rows[i]
+			var top: float = HEAD + i * h
+			var mid: float = top + h / 2.0
+			if row.get("me", false):
+				var box: StyleBoxFlat = StyleBoxFlat.new()
+				box.bg_color = Color(accent, 0.12)
+				box.set_corner_radius_all(8)
+				box.anti_aliasing = true
+				draw_style_box(box, Rect2(-8.0, top + 1.0, size.x + 16.0, h - 2.0))
+			else:
+				draw_line(Vector2(0, top + h), Vector2(size.x, top + h),
+					Color(get_theme_color("surface_line", T), 0.6), 1.0)
+			var r: float = minf(h * 0.36, 13.0)
+			Paint.avatar(self, Rect2(Vector2(r, mid) - Vector2.ONE * r, Vector2.ONE * r * 2.0),
+				int(row.get("avatar", 0)), colors, 0, 0.0)
+			var nick: String = String(row.get("nick", ""))
+			if row.get("me", false):
+				nick += " (você)"
+			draw_string(text_font, Vector2(r * 2.0 + 10.0, mid + body * 0.36), nick,
+				HORIZONTAL_ALIGNMENT_LEFT, chips_x - 150.0, body, ink)
+			_amount(number_font, int(row.get("chips", 0)), chips_x, mid, body, ink, false)
+			if tournament:
+				var place: int = int(row.get("place", 0))
+				var label: String = "%dº" % place if place > 0 else "—"
+				draw_string(number_font, Vector2(net_x - 120.0, mid + body * 0.36), label,
+					HORIZONTAL_ALIGNMENT_RIGHT, 120, body, accent if place == 1 else ink)
+			else:
+				var net: int = int(row.get("net", 0))
+				var color: Color = accent if net > 0 else (get_theme_color("danger", T) if net < 0 else dim)
+				_amount(number_font, net, net_x, mid, body, color, true)
+
+	## Valor alinhado à direita, com o ícone de ficha antes do número.
+	func _amount(font: Font, cents: int, right: float, mid: float, font_size: int,
+			color: Color, signed: bool) -> void:
+		var T: String = "Tokens"
+		var text: String = Money.format(cents)
+		if signed and cents > 0:
+			text = "+" + text
+		var w: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+		draw_string(font, Vector2(right - w, mid + font_size * 0.36), text,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
+		Paint.chip(self, Vector2(right - w - 10.0, mid), 5.5, get_theme_color("chip_0", T),
+			get_theme_color("chip_mark", T), get_theme_constant("chip_style", T))
+
+
+var final: Dictionary = {}
+var members: Array = []
+var my_id: String = ""
+
+var _title: Label = null
+var _subtitle: Label = null
+var _board: Board = null
+var _again: Button = null
+var _home: Button = null
+
+
+func _init(closed: Dictionary, room_members: Array, me: String) -> void:
+	final = closed
+	members = room_members
+	my_id = me
+
+
+func _build() -> void:
+	var avatars: Dictionary = {}
+	for member: Dictionary in members:
+		avatars[member.get("id", "")] = int(member.get("avatar", 0))
+	var podium: Array = final.get("podium", [])
+	var tournament: bool = not podium.is_empty()
+	for row: Dictionary in final.get("scoreboard", []):
+		if int(row.get("place", 0)) > 0:
+			tournament = true
+	_board = Board.new()
+	_board.tournament = tournament
+	var my_row: Dictionary = {}
+	for row: Dictionary in final.get("scoreboard", []):
+		var entry: Dictionary = {
+			"nick": row.get("nick", ""), "avatar": avatars.get(row.get("id", ""), 0),
+			"me": row.get("id", "") == my_id, "place": int(row.get("place", 0)),
+			"chips": int(row.get("chips", 0)) + int(row.get("held", 0)),
+			"net": int(row.get("net", 0)),
+		}
+		if entry["me"]:
+			my_row = entry
+		_board.rows.append(entry)
+	add_child(_board)
+	_title = Label.new()
+	_title.theme_type_variation = "TitleLabel"
+	_title.text = "Resultado do torneio" if tournament else "Placar"
+	add_child(_title)
+	_subtitle = Label.new()
+	_subtitle.theme_type_variation = "SmallLabel"
+	_subtitle.text = _summary(my_row, tournament)
+	add_child(_subtitle)
+	_home = action_button("Início", false)
+	_home.pressed.connect(func() -> void: home.emit())
+	add_child(_home)
+	_again = action_button("Jogar de novo", true)
+	_again.pressed.connect(func() -> void: again.emit())
+	add_child(_again)
+
+
+func _summary(row: Dictionary, tournament: bool) -> String:
+	if row.is_empty():
+		return "Fim da partida"
+	if tournament:
+		var place: int = int(row["place"])
+		if place == 1:
+			return "Você venceu o torneio!"
+		return "Você terminou em %dº lugar" % place if place > 0 else "Fim da partida"
+	var net: int = int(row["net"])
+	if net > 0:
+		return "Você saiu ganhando. Boa!"
+	if net < 0:
+		return "Não foi dessa vez."
+	return "Você saiu no zero a zero."
+
+
+func _layout() -> void:
+	var b: Rect2 = body()
+	var col: Rect2 = column()
+	place(_title, Rect2(b.position.x, b.position.y, b.size.x, 32))
+	place(_subtitle, Rect2(b.position.x, b.position.y + 32.0, b.size.x, 18))
+	var top: float = b.position.y + 60.0
+	var wanted: float = Board.HEAD + _board.rows.size() * 34.0
+	place(_board, Rect2(b.position.x + 8.0, top, minf(b.size.x - 16.0, 520.0),
+		minf(b.end.y - top, wanted)))
+	_board.queue_redraw()
+	place(_again, Rect2(col.position.x, col.end.y - BUTTON_H, col.size.x, BUTTON_H))
+	place(_home, Rect2(col.position.x, col.end.y - BUTTON_H * 2.0 - 8.0, col.size.x, BUTTON_H))
+
+
+func go_back() -> bool:
+	home.emit()
+	return true

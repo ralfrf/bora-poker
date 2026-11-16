@@ -2,10 +2,18 @@ extends Control
 ## A mesa deitada para até 9: desenha uma mensagem `state` do protocolo (SPEC 9.1).
 ## Mesa oval à esquerda, com você embaixo e os adversários ao redor; à direita, uma
 ## coluna estreita com o espaço reservado do anúncio no alto (longe dos botões) e os
-## três botões embaixo, ao alcance do polegar. O painel de aposta abre ao lado deles. Não fala com o servidor:
-## quem usa a mesa liga o sinal `acted` e chama render() a cada `state`.
+## três botões embaixo, ao alcance do polegar. O painel de aposta abre ao lado deles.
+## Não fala com o servidor: quem usa a mesa liga os sinais e chama render() a cada
+## `state`. As animações (cartas chegando, fichas indo ao pote e ao vencedor) saem dos
+## eventos da mensagem.
 
 signal acted(action: String, amount: int)
+## Toque em "Sair", no canto de cima.
+signal leave_requested
+## Resposta à oferta de recompra.
+signal rebuy_answered(accept: bool)
+## Toque em "Voltei" (estava ausente).
+signal back_requested
 
 const Money := preload("res://engine/money.gd")
 const CardView := preload("res://ui/widgets/card_view.gd")
@@ -17,6 +25,8 @@ const T: String = "Tokens"
 
 const AdSlot := preload("res://ui/widgets/ad_slot.gd")
 const BoardMarks := preload("res://ui/widgets/board_marks.gd")
+const ChipFlight := preload("res://ui/widgets/chip_flight.gd")
+const SafeArea := preload("res://ui/theme/safe_area.gd")
 
 const BOARD_CARD: Vector2 = Vector2(44, 62)
 const MY_CARD: Vector2 = Vector2(50, 70)
@@ -59,6 +69,14 @@ var _bar: ActionBar = null
 var _waiting: Label = null
 var _ad: AdSlot = null
 var _marks: BoardMarks = null
+var _exit: Button = null
+var _banner: AmountView = null
+var _prompt: VBoxContainer = null
+var _prompt_text: Label = null
+var _prompt_main: ActionBar.ActionButton = null
+var _prompt_alt: Button = null
+var _prompt_kind: String = ""
+var _rebuy_left_ms: int = -1
 
 var _state: Dictionary = {}
 var _seat_count: int = 8
@@ -67,6 +85,8 @@ var _tags: Dictionary = {}       # lugar -> texto da última ação
 var _turn_total_ms: int = 0
 var _turn_left_ms: int = -1
 var _turn_seat: int = -1
+var _shown_board: int = 0         # cartas comunitárias já na tela (para animar as novas)
+var _last_bets: Dictionary = {}   # posição -> ponto da aposta na tela (para irem ao pote)
 
 
 func _ready() -> void:
@@ -121,7 +141,38 @@ func _ready() -> void:
 	_waiting = Label.new()
 	_waiting.theme_type_variation = "DimLabel"
 	_waiting.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_waiting.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_waiting.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	add_child(_waiting)
+	_banner = AmountView.new()
+	_banner.big = true
+	_banner.visible = false
+	add_child(_banner)
+	_exit = Button.new()
+	_exit.text = "Sair"
+	_exit.theme_type_variation = "QuietButton"
+	_exit.focus_mode = Control.FOCUS_NONE
+	_exit.pressed.connect(func() -> void: leave_requested.emit())
+	add_child(_exit)
+	_prompt = VBoxContainer.new()
+	_prompt.add_theme_constant_override("separation", 8)
+	_prompt.alignment = BoxContainer.ALIGNMENT_END
+	_prompt.visible = false
+	add_child(_prompt)
+	_prompt_text = Label.new()
+	_prompt_text.theme_type_variation = "SmallLabel"
+	_prompt_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_prompt_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_prompt.add_child(_prompt_text)
+	_prompt_main = ActionBar.ActionButton.new(true)
+	_prompt_main.custom_minimum_size = Vector2(0, BAR_H)
+	_prompt_main.pressed.connect(_on_prompt.bind(true))
+	_prompt.add_child(_prompt_main)
+	_prompt_alt = Button.new()
+	_prompt_alt.focus_mode = Control.FOCUS_NONE
+	_prompt_alt.custom_minimum_size = Vector2(0, BAR_H)
+	_prompt_alt.pressed.connect(_on_prompt.bind(false))
+	_prompt.add_child(_prompt_alt)
 	resized.connect(_layout)
 	_layout()
 	render(_state)
@@ -135,15 +186,22 @@ func _process(delta: float) -> void:
 	_safe_check -= delta
 	if _safe_check <= 0.0 and OS.has_feature("mobile"):
 		_safe_check = 0.5
-		var safe: Rect2i = DisplayServer.get_display_safe_area()
+		var safe: Rect2i = SafeArea.current()
 		if safe != _safe_seen:
 			_safe_seen = safe
 			_layout()
+	var turn_slot: int = _slot_of(_turn_seat)
+	if turn_slot >= 0 and _state.get("table", {}).get("live", false):
+		_seats[turn_slot].pulse = 0.5 + 0.5 * sin(Time.get_ticks_msec() / 1000.0 * 4.5)
 	if _turn_left_ms > 0 and _turn_total_ms > 0:
 		_turn_left_ms = maxi(0, _turn_left_ms - int(delta * 1000.0))
-		var slot: int = _slot_of(_turn_seat)
-		if slot >= 0:
-			_seats[slot].set_fraction(float(_turn_left_ms) / _turn_total_ms)
+		if turn_slot >= 0:
+			_seats[turn_slot].set_fraction(float(_turn_left_ms) / _turn_total_ms)
+	if _rebuy_left_ms > 0:
+		var before: int = ceili(_rebuy_left_ms / 1000.0)
+		_rebuy_left_ms = maxi(0, _rebuy_left_ms - int(delta * 1000.0))
+		if ceili(_rebuy_left_ms / 1000.0) != before:
+			_refresh_rebuy_text()
 
 
 ## Desenha uma mensagem `state`.
@@ -154,23 +212,38 @@ func render(state: Dictionary) -> void:
 	var room: Dictionary = state.get("room", {})
 	var table: Dictionary = state.get("table", {})
 	var you: Dictionary = state.get("you", {})
+	var events: Array = state.get("events", [])
 	_seat_count = int(room.get("options", {}).get("seats", 9))
 	_my_seat = int(you.get("seat", -1))
-	_note_events(state.get("events", []), table)
+	_note_events(events, table)
 	_layout()
 
 	var members: Dictionary = {}
+	var me: Dictionary = {}
 	for member: Dictionary in room.get("members", []):
 		if int(member.get("seat", -1)) >= 0:
 			members[int(member["seat"])] = member
+		if member.get("id", "") == you.get("id", "-"):
+			me = member
 	var seats: Dictionary = {}
 	for entry: Dictionary in table.get("seats", []):
 		seats[int(entry["seat"])] = entry
 	var live: bool = table.get("live", false)
 	var to_act: int = int(table.get("to_act", -1))
+	var result: Dictionary = table.get("result", {}) if not live else {}
 	var winners: Dictionary = {}
-	for payout: Dictionary in table.get("result", {}).get("payouts", []):
+	for payout: Dictionary in result.get("payouts", []):
 		winners[int(payout.get("seat", -1))] = true
+	# Cartas da melhor mão de quem ganhou o pote principal, para destacar.
+	var best: Dictionary = {}
+	var shown: Dictionary = {}
+	for entry: Dictionary in result.get("shown", []):
+		shown[int(entry["seat"])] = entry
+	for payout: Dictionary in result.get("payouts", []):
+		if shown.has(int(payout["seat"])):
+			for card: Variant in shown[int(payout["seat"])].get("best", []):
+				best[int(card)] = true
+			break
 
 	if to_act != _turn_seat or int(table.get("turn_ms", -1)) > _turn_left_ms + 400:
 		_turn_total_ms = maxi(int(table.get("turn_ms", -1)), 0)
@@ -201,12 +274,16 @@ func render(state: Dictionary) -> void:
 		var fraction: float = 1.0
 		if turn and _turn_total_ms > 0:
 			fraction = float(_turn_left_ms) / _turn_total_ms
+		var tag: String = _tags.get(seat_index, "")
+		if shown.has(seat_index):
+			tag = String(shown[seat_index].get("name", tag))
 		seat_view.data = {
 			"nick": member.get("nick", ""), "avatar": member.get("avatar", 0),
 			"stack": entry.get("stack", 0), "turn": turn, "fraction": fraction,
-			"folded": entry.get("folded", false), "all_in": entry.get("all_in", false),
+			"folded": entry.get("folded", false),
+			"all_in": entry.get("all_in", false) and not shown.has(seat_index),
 			"dealer": seat_index == int(table.get("button", -1)),
-			"tag": _tags.get(seat_index, ""), "winner": winners.has(seat_index),
+			"tag": tag, "winner": winners.has(seat_index),
 			"away": member.get("away", false),
 		}
 		var bet: int = int(entry.get("bet", 0))
@@ -220,6 +297,7 @@ func render(state: Dictionary) -> void:
 			for k in 2:
 				var card: CardView = pair[k]
 				card.card = int(cards[k]) if cards.size() == 2 else -1
+				card.highlight = cards.size() == 2 and best.has(int(cards[k]))
 				card.visible = true
 			_place_hole(slot, _slot_point(slot))
 
@@ -228,10 +306,13 @@ func render(state: Dictionary) -> void:
 		_board[i].visible = i < board.size()
 		if i < board.size():
 			_board[i].card = int(board[i])
+			_board[i].highlight = best.has(int(board[i]))
+		else:
+			_board[i].land()
 	var pot: int = int(table.get("pot", 0))
 	if not live:
 		pot = 0
-		for p: Dictionary in table.get("result", {}).get("payouts", []):
+		for p: Dictionary in result.get("payouts", []):
 			pot += int(p.get("amount", 0))
 	_pot.visible = pot > 0
 	_pot.amount = pot
@@ -244,20 +325,88 @@ func render(state: Dictionary) -> void:
 		if my_cards.size() == 2:
 			_mine[k].card = int(my_cards[k])
 			_mine[k].dimmed = my_entry.get("folded", false)
+			_mine[k].highlight = best.has(int(my_cards[k]))
+		else:
+			_mine[k].land()
 
+	_show_banner(result, members)
+	_show_column(table, you, me, members)
+
+	var info: String = "Mão %d · Blinds %s / %s" % [int(table.get("hand", 0)),
+		Money.format(int(table.get("small_blind", 0))), Money.format(int(table.get("big_blind", 0)))]
+	_info.text = info
+	_animate(events, table, board.size(), live)
+
+
+## Embaixo da coluna: os botões na sua vez; a oferta de recompra; "Voltei" quando
+## ausente; ou de quem é a vez.
+func _show_column(table: Dictionary, you: Dictionary, me: Dictionary,
+		members: Dictionary) -> void:
 	var legal: Dictionary = you.get("legal", {})
+	var kind: String = ""
+	if legal.is_empty():
+		if you.has("rebuy_ms"):
+			kind = "rebuy"
+		elif me.get("away", false) and _my_seat >= 0:
+			kind = "away"
 	_bar.visible = not legal.is_empty()
-	_waiting.visible = legal.is_empty()
+	_prompt.visible = kind != ""
+	_waiting.visible = legal.is_empty() and kind == ""
 	if not legal.is_empty():
 		_bar.show_legal(legal, int(table.get("pot", 0)), int(table.get("current_bet", 0)),
 			int(table.get("small_blind", 1)))
 	else:
 		_bar.close_sheet()
 		_waiting.text = _waiting_text(table, you, members)
+	_prompt_kind = kind
+	_rebuy_left_ms = int(you.get("rebuy_ms", -1))
+	match kind:
+		"rebuy":
+			var stack: int = int(_state.get("room", {}).get("options", {}).get("starting_stack", 0))
+			_prompt_main.set_content("Recomprar", stack)
+			_prompt_alt.text = "Sair da mesa"
+			_prompt_alt.visible = true
+			_refresh_rebuy_text()
+		"away":
+			_prompt_text.text = "Você ficou ausente e está desistindo das mãos."
+			_prompt_main.set_content("Voltei", -1)
+			_prompt_alt.visible = false
+	_place_prompt()
 
-	var info: String = "Mão %d · Blinds %s / %s" % [int(table.get("hand", 0)),
-		Money.format(int(table.get("small_blind", 0))), Money.format(int(table.get("big_blind", 0)))]
-	_info.text = info
+
+func _refresh_rebuy_text() -> void:
+	if _prompt_kind == "rebuy":
+		_prompt_text.text = "Suas fichas acabaram. %d s para decidir." % ceili(
+			maxi(_rebuy_left_ms, 0) / 1000.0)
+
+
+func _on_prompt(main: bool) -> void:
+	match _prompt_kind:
+		"rebuy":
+			rebuy_answered.emit(main)
+		"away":
+			back_requested.emit()
+
+
+## Fim de mão: quem ganhou e quanto, embaixo das cartas comunitárias.
+func _show_banner(result: Dictionary, members: Dictionary) -> void:
+	var payouts: Array = result.get("payouts", [])
+	_banner.visible = not payouts.is_empty()
+	if payouts.is_empty():
+		return
+	var names: Array[String] = []
+	var total: int = 0
+	for payout: Dictionary in payouts:
+		var seat_index: int = int(payout.get("seat", -1))
+		total += int(payout.get("amount", 0))
+		var nick: String = "Você" if seat_index == _my_seat 			else String(members.get(seat_index, {}).get("nick", ""))
+		if nick != "" and not names.has(nick):
+			names.append(nick)
+	var who: String = names[0] if names.size() == 1 else 		", ".join(names.slice(0, names.size() - 1)) + " e " + names[-1]
+	var verb: String = "ganha" if names.size() == 1 else "dividem"
+	_banner.caption = "%s %s" % [who, verb]
+	_banner.amount = total
+	_banner.place_at(_banner_point())
 
 
 ## Abre a folha de aposta (usado nas fotos e pela própria barra).
@@ -306,19 +455,9 @@ func _seat_at(slot: int) -> int:
 	return -1
 
 
-## Área útil da tela, sem o furo da câmera, que no celular deitado fica num dos lados.
-## Só o lado da câmera perde a faixa; ao girar o celular, _process percebe a troca.
+## Área útil da tela, sem o furo da câmera (só o lado da câmera perde a faixa).
 func _content() -> Rect2:
-	var rect: Rect2 = Rect2(Vector2.ZERO, size)
-	if OS.has_feature("mobile"):
-		var safe: Rect2i = DisplayServer.get_display_safe_area()
-		var window: Vector2i = DisplayServer.window_get_size()
-		if window.x > 0 and window.y > 0:
-			var k: float = size.x / window.x
-			var left: float = safe.position.x * k
-			var right: float = maxf(window.x - safe.end.x, 0.0) * k
-			rect = Rect2(left, 0, size.x - left - right, size.y)
-	return rect
+	return SafeArea.content(self)
 
 
 func _column() -> Rect2:
@@ -397,6 +536,10 @@ func _board_center() -> Vector2:
 	return _table_center() + Vector2(0, 2)
 
 
+func _banner_point() -> Vector2:
+	return _board_center() + Vector2(0, BOARD_CARD.y / 2.0 + 24.0)
+
+
 func _pot_point() -> Vector2:
 	return _board_center() + Vector2(0, -BOARD_CARD.y / 2.0 - 24.0)
 
@@ -468,8 +611,23 @@ func _layout() -> void:
 		_mine[k].position = (my_center + Vector2(-MY_CARD.x + 6.0 + k * (MY_CARD.x - 12.0),
 			-MY_CARD.y / 2.0)).round()
 	_place_bar()
+	_place_prompt()
 	_waiting.position = Vector2(column.position.x, column.end.y - BAR_H * 2.0)
 	_waiting.size = Vector2(column.size.x, BAR_H * 2.0)
+	_exit.size = Vector2(64, 40)
+	_exit.position = (Vector2(area.position.x + MARGIN, area.end.y - MARGIN - 40.0)).round()
+	if _banner.visible:
+		_banner.place_at(_banner_point())
+
+
+func _place_prompt() -> void:
+	if _prompt == null:
+		return
+	var column: Rect2 = _column()
+	_prompt.size = Vector2(column.size.x, 0)
+	var height: float = _prompt.get_combined_minimum_size().y
+	_prompt.size = Vector2(column.size.x, height)
+	_prompt.position = Vector2(column.position.x, column.end.y - height)
 
 
 ## A barra cresce para cima quando os atalhos de aposta abrem.
@@ -481,3 +639,114 @@ func _place_bar() -> void:
 	var sheet_h: float = _bar.sheet.get_combined_minimum_size().y
 	_bar.sheet.size = Vector2(SHEET_W, sheet_h)
 	_bar.sheet.position = Vector2(column.position.x - MARGIN - SHEET_W, column.end.y - sheet_h)
+
+
+# ------------------------------------------------------------------ animações
+
+
+## Animações da mensagem que acabou de chegar: cartas distribuídas, cartas
+## comunitárias novas, apostas indo para a frente do lugar e depois para o pote, e o
+## pote indo para quem ganhou.
+func _animate(events: Array, table: Dictionary, board_count: int, live: bool) -> void:
+	var dealt: bool = false
+	var streets: int = 0
+	var ended: bool = false
+	var paid: Array[int] = []
+	for event: Dictionary in events:
+		match String(event.get("type", "")):
+			"deal":
+				dealt = true
+			"street":
+				streets += 1
+			"end":
+				ended = true
+			"action", "blind":
+				var slot: int = _slot_of(int(event.get("seat", -1)))
+				if int(event.get("amount", 0)) > 0 and slot >= 0 and not paid.has(slot):
+					paid.append(slot)
+	if live:
+		_pot_fade(1.0, 0.0, 0.0)
+	if dealt:
+		_shown_board = 0
+		_last_bets.clear()
+		_deal_cards()
+
+	var to_pot: Dictionary = {}
+	if streets > 0 or ended:
+		to_pot = _last_bets.duplicate()
+		for slot: int in paid:
+			to_pot[slot] = _bet_point(slot)
+		for slot: int in to_pot:
+			_fly_chips(_slot_point(slot) if not _last_bets.has(slot) else to_pot[slot],
+				_pot_point(), 0.0)
+	else:
+		for slot: int in paid:
+			var bet_view: AmountView = _bets[slot]
+			if bet_view.visible:
+				_fly_chips(_slot_point(slot), _bet_point(slot), 0.0, 0.25)
+				bet_view.modulate.a = 0.0
+				create_tween().tween_property(bet_view, "modulate:a", 1.0, 0.12).set_delay(0.22)
+
+	if board_count > _shown_board:
+		var base: float = 0.3 if not to_pot.is_empty() else 0.0
+		var first: int = _shown_board
+		var first_group: int = 0 if first < 3 else first - 2
+		for i in range(first, board_count):
+			var group: int = 0 if i < 3 else i - 2
+			var card: CardView = _board[i]
+			var delay: float = base + (group - first_group) * 0.45
+			var origin: Vector2 = card.position + card.size / 2.0 + Vector2(0, -22)
+			if i < 3:
+				# Flop: as três saem da primeira posição e se espalham.
+				delay += (i - first) * 0.07
+				origin = _board[0].position + BOARD_CARD / 2.0 + Vector2(0, -16)
+			card.fly_from(origin, delay)
+	_shown_board = board_count
+
+	if ended:
+		var delay: float = 0.5 if not to_pot.is_empty() else 0.15
+		if table.get("result", {}).get("showdown", false):
+			delay += 0.6
+		for payout: Dictionary in table.get("result", {}).get("payouts", []):
+			var slot: int = _slot_of(int(payout.get("seat", -1)))
+			if slot >= 0:
+				_fly_chips(_pot_point(), _slot_point(slot), delay, 0.5)
+		_pot_fade(0.0, delay, 0.25)
+
+	_last_bets.clear()
+	if live:
+		for slot in SLOTS:
+			if _bets[slot].visible:
+				_last_bets[slot] = _bet_point(slot)
+
+
+## Distribuição: duas voltas pela mesa, uma carta por vez, saindo do centro.
+func _deal_cards() -> void:
+	var origin: Vector2 = _board_center()
+	var order: int = 0
+	for k in 2:
+		for slot in SLOTS:
+			var card: CardView = _mine[k] if slot == 0 else (_hole[slot][k] if slot > 0 else null)
+			if card != null and card.visible:
+				card.fly_from(origin, order * 0.06, 0.26)
+				order += 1
+
+
+func _fly_chips(from: Vector2, to: Vector2, delay: float, duration: float = 0.38) -> void:
+	var flight: ChipFlight = ChipFlight.new()
+	add_child(flight)
+	flight.launch(from, to, delay, duration)
+
+
+var _pot_tween: Tween = null
+
+
+func _pot_fade(alpha: float, delay: float, duration: float) -> void:
+	if _pot_tween != null:
+		_pot_tween.kill()
+		_pot_tween = null
+	if duration <= 0.0:
+		_pot.modulate.a = alpha
+		return
+	_pot_tween = create_tween()
+	_pot_tween.tween_property(_pot, "modulate:a", alpha, duration).set_delay(delay)

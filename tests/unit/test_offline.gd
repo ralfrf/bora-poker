@@ -1,0 +1,148 @@
+extends "res://tests/test_case.gd"
+## Modo offline (SPEC 2 e 8): a sessão do app com o servidor dentro dele, as escolhas da
+## mesa offline e o perfil guardado no celular.
+
+const OfflineGame := preload("res://ui/app/offline_game.gd")
+const OfflineOptions := preload("res://ui/app/offline_options.gd")
+const Profile := preload("res://ui/app/profile.gd")
+const Clock := preload("res://server/clock.gd")
+const Room := preload("res://server/room.gd")
+const Protocol := preload("res://server/protocol.gd")
+
+const FAST: Dictionary = {"hand_gap_ms": 0, "showdown_gap_ms": 0, "bot_min_ms": 0,
+	"bot_max_ms": 0, "bot_evaluations": 120}
+const TEST_PROFILE: String = "user://perfil_teste.cfg"
+
+var _seed: int = 0
+
+
+func _next_seed() -> int:
+	_seed += 1
+	return _seed
+
+
+func _game(clock: Clock) -> OfflineGame:
+	_seed = 900
+	return OfflineGame.new(clock, FAST, _next_seed)
+
+
+## O app joga como um humano que sempre passa ou paga, até completar várias mãos.
+func test_offline_plays_full_hands() -> void:
+	var clock: Clock = Clock.new(true)
+	var game: OfflineGame = _game(clock)
+	var choice: Dictionary = OfflineOptions.clean({"seats": 4})
+	game.begin("Rafa", 1, "aparelho-teste-0001", OfflineOptions.build(choice))
+	var hands: int = 0
+	var showdowns: int = 0
+	var errors: int = 0
+	var my_turns: int = 0
+	for i in 4000:
+		clock.advance(250)
+		for message: Dictionary in game.update():
+			if message["t"] == Protocol.ERROR:
+				errors += 1
+			if message["t"] != Protocol.STATE:
+				continue
+			for event: Dictionary in message["events"]:
+				if event["type"] == "end":
+					hands += 1
+				elif event["type"] == "showdown":
+					showdowns += 1
+			var you: Dictionary = message["you"]
+			if you.has("legal"):
+				my_turns += 1
+				game.act("check" if you["legal"]["can_check"] else "call", 0)
+			elif you.has("rebuy_ms"):
+				game.rebuy(true)
+		if hands >= 12 or not game.final.is_empty():
+			break
+	assert_eq(game.my_id.begins_with("p"), true, "entrou na sala")
+	assert_true(hands >= 12, "completou mãos (%d)" % hands)
+	assert_true(showdowns >= 1, "teve showdown")
+	assert_true(my_turns >= 12, "jogou na própria vez (%d)" % my_turns)
+	assert_eq(errors, 0, "nenhuma jogada recusada")
+	var state: Dictionary = game.last_state
+	assert_eq(state["room"]["members"].size(), 4, "você e três bots")
+	var final: Dictionary = game.leave()
+	assert_eq(final.get("t", ""), Protocol.CLOSED, "sair devolve o placar")
+	var nicks: Array = []
+	for row: Dictionary in final.get("scoreboard", []):
+		nicks.append(row["nick"])
+	assert_true(nicks.has("Rafa"), "você está no placar")
+	assert_eq(final["scoreboard"].size(), 4, "placar com os quatro lugares")
+
+
+## Jogada com número de vez velho é recusada (toque atrasado).
+func test_offline_stale_tap_is_refused() -> void:
+	var clock: Clock = Clock.new(true)
+	var game: OfflineGame = _game(clock)
+	game.begin("Rafa", 0, "aparelho-teste-0002", OfflineOptions.build(OfflineOptions.clean({"seats": 2})))
+	var refused: bool = false
+	for i in 400:
+		clock.advance(250)
+		for message: Dictionary in game.update():
+			if message["t"] == Protocol.ERROR:
+				refused = true
+			if message["t"] == Protocol.STATE and message["you"].has("legal") and not refused:
+				game.last_state["table"]["seq"] = int(message["table"]["seq"]) - 1
+				game.act("fold", 0)
+		if refused:
+			break
+	assert_true(refused, "a jogada velha foi recusada")
+
+
+## Toda combinação da tela offline vira opções que o servidor aceita, com a mesa cheia.
+func test_offline_options_are_valid() -> void:
+	for format in 2:
+		for seats in range(OfflineOptions.MIN_SEATS, OfflineOptions.MAX_SEATS + 1):
+			for bots in OfflineOptions.BOT_LEVELS.size():
+				for k in 5:
+					var choice: Dictionary = OfflineOptions.clean({"format": format,
+						"seats": seats, "bots": bots, "stack": k % 4, "blinds": (k + 1) % 4,
+						"t_stack": k % 3, "minutes": k % 4, "turn": k % 4, "rebuys": k})
+					var checked: Dictionary = Room.normalize_options(OfflineOptions.build(choice))
+					if not checked["ok"]:
+						fail("recusada: %s (%s)" % [str(choice), checked["error"]])
+						return
+					assert_eq((checked["options"]["bots"] as Array).size(), seats - 1)
+	var mixed: Array = OfflineOptions.bot_levels({"seats": 5, "bots": 3})
+	assert_eq(mixed, [1, 2, 3, 1], "misto alterna os níveis")
+
+
+func test_offline_options_clean_restores_defaults() -> void:
+	var choice: Dictionary = OfflineOptions.clean({"seats": 12, "format": "x", "turn": 3,
+		"rebuys": 9})
+	assert_eq(choice["seats"], OfflineOptions.DEFAULT_SEATS)
+	assert_eq(choice["format"], 0)
+	assert_eq(choice["turn"], 3)
+	assert_eq(choice["rebuys"], OfflineOptions.DEFAULTS["rebuys"])
+	assert_eq(OfflineOptions.blind_labels()[0], "0,05/0,10")
+
+
+func test_profile_round_trip() -> void:
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PROFILE))
+	var profile: Profile = Profile.new()
+	profile.load_file(TEST_PROFILE)
+	assert_true(profile.is_new(), "sem arquivo, perfil novo")
+	assert_eq(profile.device.length(), 24, "código do aparelho criado")
+	profile.set_nick("   Rafa da Silva Sauro Pereira  ")
+	profile.avatar = 2
+	profile.last_mode = Profile.MODE_OFFLINE
+	profile.offline = {"seats": 6}
+	assert_true(profile.save(), "salvou")
+	var again: Profile = Profile.new()
+	again.load_file(TEST_PROFILE)
+	assert_false(again.is_new())
+	assert_eq(again.nick, "Rafa da Silva Sa", "apelido limpo e cortado em 16")
+	assert_eq(again.avatar, 2)
+	assert_eq(again.device, profile.device, "o mesmo aparelho")
+	assert_eq(again.offline, {"seats": 6})
+	again.set_nick("   ")
+	assert_true(again.is_new(), "apelido em branco não vale")
+	var file: FileAccess = FileAccess.open(TEST_PROFILE, FileAccess.WRITE)
+	file.store_string("isto não é um perfil [[[")
+	file.close()
+	var broken: Profile = Profile.new()
+	broken.load_file(TEST_PROFILE)
+	assert_true(broken.is_new(), "arquivo estragado vira perfil novo")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PROFILE))

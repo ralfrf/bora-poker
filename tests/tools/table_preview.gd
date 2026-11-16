@@ -4,7 +4,7 @@ extends Control
 
 const Directions := preload("res://ui/theme/directions.gd")
 const UiTheme := preload("res://ui/theme/ui_theme.gd")
-const DemoState := preload("res://ui/explore/demo_state.gd")
+const DemoState := preload("res://tests/tools/demo_state.gd")
 const TableView := preload("res://ui/table/table_view.gd")
 
 var _index: int = 0

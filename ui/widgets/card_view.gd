@@ -22,11 +22,42 @@ var highlight: bool = false:
 		queue_redraw()
 
 
+## Deslocamento do desenho durante a animação de chegada (a posição do controle não
+## muda, então a mesa pode se reorganizar no meio do voo).
+var lift: Vector2 = Vector2.ZERO:
+	set(value):
+		lift = value
+		queue_redraw()
+
+var _flight: Tween = null
+
+
 func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 
+## A carta chega voando de um ponto (em coordenadas do pai) até o lugar dela.
+func fly_from(origin: Vector2, delay: float, duration: float = 0.3) -> void:
+	if _flight != null:
+		_flight.kill()
+	lift = origin - position - size / 2.0
+	modulate.a = 0.0
+	_flight = create_tween().set_parallel()
+	_flight.tween_property(self, "lift", Vector2.ZERO, duration).set_delay(delay) 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_flight.tween_property(self, "modulate:a", 1.0, duration * 0.4).set_delay(delay)
+
+
+## Termina a animação na hora (carta escondida ou trocada).
+func land() -> void:
+	if _flight != null:
+		_flight.kill()
+		_flight = null
+	lift = Vector2.ZERO
+	modulate.a = 1.0
+
+
 func _draw() -> void:
+	draw_set_transform(lift)
 	var rect: Rect2 = Rect2(Vector2.ZERO, size)
 	var unit: float = size.x / 50.0
 	var radius: float = get_theme_constant("radius_card", T) * unit

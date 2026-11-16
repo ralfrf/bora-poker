@@ -1,0 +1,63 @@
+extends RefCounted
+## Perfil guardado só neste celular (SPEC 4.4 e 11.1): apelido, avatar, o último modo
+## usado e as últimas escolhas da mesa offline. Sem cadastro e sem dado pessoal.
+##
+## device é um código aleatório deste aparelho, usado pelo servidor para reconhecer
+## quem volta (SPEC 6.1). Nunca aparece na tela.
+
+const Room := preload("res://server/room.gd")
+
+const PATH: String = "user://perfil.cfg"
+const MODE_OFFLINE: String = "offline"
+const MODE_WIFI: String = "wifi"
+const MODE_ONLINE: String = "online"
+const MODES: Array[String] = [MODE_OFFLINE, MODE_WIFI, MODE_ONLINE]
+## Avatares provisórios oferecidos na primeira abertura (os cerca de 10 vêm depois).
+const AVATAR_CHOICES: Array[int] = [0, 1, 2]
+
+var nick: String = ""
+var avatar: int = 0
+var last_mode: String = MODE_OFFLINE
+var offline: Dictionary = {}
+var device: String = ""
+
+var _path: String = PATH
+
+
+## Lê o perfil. Arquivo ausente ou estragado vira um perfil novo, sem apelido.
+func load_file(path: String = PATH) -> void:
+	_path = path
+	var file: ConfigFile = ConfigFile.new()
+	if file.load(path) == OK:
+		var raw_nick: Variant = file.get_value("perfil", "apelido", "")
+		nick = Room.clean_nick(raw_nick) if typeof(raw_nick) == TYPE_STRING \
+			and (raw_nick as String).strip_edges() != "" else ""
+		var raw_avatar: Variant = file.get_value("perfil", "avatar", 0)
+		avatar = clampi(raw_avatar, 0, Room.AVATARS - 1) if typeof(raw_avatar) == TYPE_INT else 0
+		var raw_mode: Variant = file.get_value("perfil", "ultimo_modo", MODE_OFFLINE)
+		last_mode = raw_mode if MODES.has(raw_mode) else MODE_OFFLINE
+		var raw_device: Variant = file.get_value("perfil", "aparelho", "")
+		device = raw_device if typeof(raw_device) == TYPE_STRING else ""
+		var raw_offline: Variant = file.get_value("offline", "escolhas", {})
+		offline = raw_offline if typeof(raw_offline) == TYPE_DICTIONARY else {}
+	if device.length() < 16:
+		device = Crypto.new().generate_random_bytes(12).hex_encode()
+
+
+func save() -> bool:
+	var file: ConfigFile = ConfigFile.new()
+	file.set_value("perfil", "apelido", nick)
+	file.set_value("perfil", "avatar", avatar)
+	file.set_value("perfil", "ultimo_modo", last_mode)
+	file.set_value("perfil", "aparelho", device)
+	file.set_value("offline", "escolhas", offline)
+	return file.save(_path) == OK
+
+
+## Primeira abertura: ainda não escolheu apelido.
+func is_new() -> bool:
+	return nick == ""
+
+
+func set_nick(text: String) -> void:
+	nick = Room.clean_nick(text) if text.strip_edges() != "" else ""

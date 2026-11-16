@@ -16,6 +16,9 @@ const UiTheme := preload("res://ui/theme/ui_theme.gd")
 
 
 func _initialize() -> void:
+	# No modo de baixo consumo do app a tela parada não redesenha, e a foto esperaria
+	# para sempre por um quadro desenhado.
+	OS.low_processor_usage_mode = false
 	var options: Dictionary = {}
 	for arg: String in OS.get_cmdline_user_args():
 		if arg.begins_with("--") and arg.contains("="):
