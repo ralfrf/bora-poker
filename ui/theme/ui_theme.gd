@@ -6,6 +6,7 @@ extends RefCounted
 ## Tamanhos de texto: só três (SMALL, BODY, LARGE).
 
 const Directions := preload("res://ui/theme/directions.gd")
+const GlossBox := preload("res://ui/theme/gloss_box.gd")
 
 const TOKENS: String = "Tokens"
 const SMALL: int = 12
@@ -49,6 +50,10 @@ static func build(direction: Dictionary) -> Theme:
 	theme.default_font = text_font
 	theme.default_font_size = BODY
 	theme.set_color("font_color", "Label", colors["text"])
+	# Sombra curta em todo texto, para ler bem sobre o fundo com luzes.
+	theme.set_color("font_shadow_color", "Label", Color(colors["shadow"], 0.5))
+	theme.set_constant("shadow_offset_x", "Label", 0)
+	theme.set_constant("shadow_offset_y", "Label", 1)
 
 	_label(theme, "SmallLabel", text_font, SMALL, colors["text_dim"])
 	_label(theme, "NameLabel", text_strong, SMALL, colors["text"])
@@ -60,13 +65,19 @@ static func build(direction: Dictionary) -> Theme:
 	_label(theme, "StrongLabel", text_strong, BODY, colors["text"])
 
 	var radius: int = direction["radius"]["button"]
-	var border: int = direction["style"]["button_border"]
-	_button(theme, "Button", text_strong, colors["button"], colors["button_line"],
-		colors["text"], radius, border, colors)
-	_button(theme, "PrimaryButton", text_strong, colors["accent"], colors["accent"],
-		colors["on_accent"], radius, 0, colors)
-	_button(theme, "QuietButton", text_font, Color(colors["surface_line"], 0.55),
-		colors["button_line"], colors["text"], radius, 1 if border == 2 else 0, colors)
+	# Botões com volume: o comum em vidro azul-noite, o principal em ouro, Pagar em
+	# azul e Desistir em vinho. QuietButton é vidro claro e translúcido.
+	_button(theme, "Button", text_strong, colors["button_top"], colors["button"],
+		colors["button_line"], colors["text"], radius, 0.22)
+	var primary: GlossBox = _button(theme, "PrimaryButton", text_strong, colors["accent_top"],
+		colors["accent"], colors["accent_line"], colors["on_accent"], radius, 0.75)
+	primary.glow = Color(colors["accent"], 0.22)
+	_button(theme, "CallButton", text_strong, colors["call_top"], colors["call"],
+		colors["call_line"], colors["text"], radius, 0.35)
+	_button(theme, "FoldButton", text_strong, colors["fold_top"], colors["fold"],
+		colors["fold_line"], colors["text"], radius, 0.3)
+	_button(theme, "QuietButton", text_font, Color(1, 1, 1, 0.13), Color(1, 1, 1, 0.05),
+		Color(1, 1, 1, 0.12), colors["text"], radius, 0.2)
 	_choice(theme, text_strong, colors, radius)
 	_line_edit(theme, text_font, colors, radius)
 	_panels(theme, colors, direction["radius"]["panel"])
@@ -99,23 +110,19 @@ static func _chip_icon(fill: Color, mark: Color) -> Texture2D:
 	return ImageTexture.create_from_image(image)
 
 
-## Botão de escolha (opções da sala, modos, avatares): apagado quando solto e com o
-## contorno e o fundo do destaque quando escolhido.
+## Botão de escolha (opções da sala, modos, avatares): vidro apagado quando solto e
+## vidro dourado com contorno do destaque quando escolhido.
 static func _choice(theme: Theme, font: Font, colors: Dictionary, radius: int) -> void:
-	_button(theme, "ChoiceButton", font, Color(colors["surface_line"], 0.45),
-		Color(colors["surface_line"], 0.0), colors["text_dim"], radius, 0, colors)
-	var chosen: StyleBoxFlat = _box(Color(colors["accent"], 0.16), radius)
-	chosen.set_border_width_all(2)
-	chosen.border_color = colors["accent"]
-	chosen.content_margin_left = 4
-	chosen.content_margin_right = 4
-	chosen.content_margin_top = 6
-	chosen.content_margin_bottom = 6
+	_button(theme, "ChoiceButton", font, Color(1, 1, 1, 0.09), Color(1, 1, 1, 0.03),
+		Color(1, 1, 1, 0.10), colors["text_dim"], radius, 0.12)
+	var chosen: GlossBox = _gloss(Color(colors["accent"], 0.34), Color(colors["accent"], 0.12),
+		colors["accent"], radius, 0.35)
+	chosen.rim_width = 2
 	for state: String in ["normal", "hover", "disabled"]:
-		var box: StyleBoxFlat = theme.get_stylebox(state, "ChoiceButton").duplicate()
+		var box: GlossBox = theme.get_stylebox(state, "ChoiceButton") as GlossBox
 		box.content_margin_left = 4
 		box.content_margin_right = 4
-		theme.set_stylebox(state, "ChoiceButton", box)
+	_margins(chosen, 4, 6)
 	theme.set_stylebox("pressed", "ChoiceButton", chosen)
 	theme.set_stylebox("hover_pressed", "ChoiceButton", chosen)
 	theme.set_font_size("font_size", "ChoiceButton", BODY)
@@ -125,14 +132,11 @@ static func _choice(theme: Theme, font: Font, colors: Dictionary, radius: int) -
 
 
 static func _line_edit(theme: Theme, font: Font, colors: Dictionary, radius: int) -> void:
-	var normal: StyleBoxFlat = _box(colors["surface"], radius)
-	normal.set_border_width_all(1)
-	normal.border_color = colors["button_line"]
-	normal.content_margin_left = 14
-	normal.content_margin_right = 14
-	normal.content_margin_top = 8
-	normal.content_margin_bottom = 8
-	var focus: StyleBoxFlat = normal.duplicate()
+	# Campo afundado: mais escuro em cima, como um entalhe.
+	var normal: GlossBox = _gloss(Color(colors["bg"], 0.9), Color(colors["surface"], 0.9),
+		Color(1, 1, 1, 0.12), radius, 0.0)
+	_margins(normal, 14, 8)
+	var focus: StyleBoxFlat = _box(Color(0, 0, 0, 0), radius)
 	focus.draw_center = false
 	focus.set_border_width_all(2)
 	focus.border_color = colors["accent"]
@@ -148,22 +152,27 @@ static func _line_edit(theme: Theme, font: Font, colors: Dictionary, radius: int
 	theme.set_constant("caret_width", "LineEdit", 2)
 
 
-## Painel de cartão (modos do início, placar) e de diálogo (com sombra).
+## Painel de cartão (modos do início, placar) e de diálogo: vidro escuro com brilho
+## no alto; o diálogo é mais opaco e tem sombra.
 static func _panels(theme: Theme, colors: Dictionary, radius: int) -> void:
-	var card: StyleBoxFlat = _box(Color(colors["surface"], 0.92), radius)
-	card.set_border_width_all(1)
-	card.border_color = colors["surface_line"]
+	var card: GlossBox = _gloss(Color(colors["surface_top"], 0.72), Color(colors["surface"], 0.86),
+		Color(colors["surface_line"], 0.8), radius, 0.14)
 	card.set_content_margin_all(12)
 	theme.set_type_variation("CardPanel", "PanelContainer")
 	theme.set_stylebox("panel", "CardPanel", card)
-	var dialog: StyleBoxFlat = card.duplicate()
-	dialog.bg_color = colors["surface"]
-	dialog.shadow_color = Color(colors["shadow"], 0.5)
-	dialog.shadow_size = 18
-	dialog.shadow_offset = Vector2(0, 6)
+	var dialog: GlossBox = _gloss(colors["surface_top"], colors["surface"],
+		colors["surface_line"], radius, 0.18)
+	dialog.shadow_color = Color(colors["shadow"], 0.6)
+	dialog.shadow_size = 20
+	dialog.shadow_offset = Vector2(0, 8)
 	dialog.set_content_margin_all(18)
 	theme.set_type_variation("DialogPanel", "PanelContainer")
 	theme.set_stylebox("panel", "DialogPanel", dialog)
+	# Painel solto (folha de aposta), igual ao diálogo, com menos margem.
+	var sheet: GlossBox = dialog.duplicate() as GlossBox
+	sheet.set_content_margin_all(8)
+	theme.set_type_variation("SheetPanel", "PanelContainer")
+	theme.set_stylebox("panel", "SheetPanel", sheet)
 
 
 static func _label(theme: Theme, type_name: String, font: Font, size: int,
@@ -174,29 +183,28 @@ static func _label(theme: Theme, type_name: String, font: Font, size: int,
 	theme.set_color("font_color", type_name, color)
 
 
-static func _button(theme: Theme, type_name: String, font: Font, fill: Color,
-		line: Color, ink: Color, radius: int, border: int, colors: Dictionary) -> void:
+## Botão com volume: degradê de top a bottom, contorno line, sombra; apertado fica
+## mais escuro e encosta na mesa; desativado fica apagado. Devolve o estilo normal.
+static func _button(theme: Theme, type_name: String, font: Font, top: Color,
+		bottom: Color, line: Color, ink: Color, radius: int, shine: float) -> GlossBox:
 	if type_name != "Button":
 		theme.set_type_variation(type_name, "Button")
-	var normal: StyleBoxFlat = _box(fill, radius)
-	normal.set_border_width_all(border)
-	normal.border_color = line
-	normal.content_margin_left = 12
-	normal.content_margin_right = 12
-	normal.content_margin_top = 8
-	normal.content_margin_bottom = 8
-	if colors["bg"].get_luminance() > 0.5 and fill.a > 0.0:
-		normal.shadow_color = Color(colors["shadow"], 0.10)
-		normal.shadow_size = 6
-		normal.shadow_offset = Vector2(0, 2)
-	var pressed: StyleBoxFlat = normal.duplicate()
-	pressed.bg_color = fill.darkened(0.12) if fill.a > 0.0 else Color(line, 0.25)
-	pressed.shadow_size = 0
-	var hover: StyleBoxFlat = normal.duplicate()
-	hover.bg_color = fill.lightened(0.04) if fill.a > 0.0 else fill
-	var disabled: StyleBoxFlat = normal.duplicate()
-	disabled.bg_color = Color(fill, fill.a * 0.4)
-	disabled.border_color = Color(line, 0.4)
+	var normal: GlossBox = _gloss(top, bottom, line, radius, shine)
+	_margins(normal, 12, 8)
+	if bottom.a > 0.5:
+		normal.shadow_color = Color(0, 0, 0, 0.45)
+		normal.shadow_size = 5
+		normal.shadow_offset = Vector2(0, 3)
+	var hover: GlossBox = normal.tinted(top.lightened(0.05),
+		bottom.lightened(0.05)) as GlossBox
+	var pressed: GlossBox = normal.tinted(bottom.darkened(0.08), top.darkened(0.2), 1) as GlossBox
+	pressed.shine = shine * 0.3
+	pressed.glow = Color(0, 0, 0, 0)
+	var disabled: GlossBox = normal.tinted(Color(1, 1, 1, 0.08), Color(1, 1, 1, 0.03),
+		0) as GlossBox
+	disabled.rim = Color(1, 1, 1, 0.1)
+	disabled.glow = Color(0, 0, 0, 0)
+	disabled.shine = 0.0
 	theme.set_stylebox("normal", type_name, normal)
 	theme.set_stylebox("hover", type_name, hover)
 	theme.set_stylebox("pressed", type_name, pressed)
@@ -208,7 +216,30 @@ static func _button(theme: Theme, type_name: String, font: Font, fill: Color,
 	for state: String in ["font_color", "font_hover_color", "font_pressed_color",
 			"font_hover_pressed_color", "font_focus_color"]:
 		theme.set_color(state, type_name, ink)
-	theme.set_color("font_disabled_color", type_name, Color(ink, 0.4))
+	theme.set_color("font_disabled_color", type_name, Color(1, 1, 1, 0.35))
+	# Texto claro ganha sombra; texto escuro (botão dourado) não precisa.
+	if ink.get_luminance() > 0.5:
+		theme.set_color("font_shadow_color", type_name, Color(0, 0, 0, 0.45))
+		theme.set_constant("shadow_offset_y", type_name, 1)
+		theme.set_constant("shadow_offset_x", type_name, 0)
+	return normal
+
+
+static func _gloss(top: Color, bottom: Color, rim: Color, radius: int, shine: float) -> GlossBox:
+	var box: GlossBox = GlossBox.new()
+	box.top = top
+	box.bottom = bottom
+	box.rim = rim
+	box.radius = radius
+	box.shine = shine
+	return box
+
+
+static func _margins(box: GlossBox, horizontal: float, vertical: float) -> void:
+	box.content_margin_left = horizontal
+	box.content_margin_right = horizontal
+	box.content_margin_top = vertical
+	box.content_margin_bottom = vertical
 
 
 static func _slider(theme: Theme, colors: Dictionary) -> void:

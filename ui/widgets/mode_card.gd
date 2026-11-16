@@ -2,6 +2,7 @@ extends Button
 ## Cartão de um modo de jogo no início: desenho, nome e uma linha de explicação.
 ## Modo ainda não pronto aparece apagado, com o selo "Em breve", e não se escolhe.
 
+const Paint := preload("res://ui/widgets/paint.gd")
 const T: String = "Tokens"
 
 const ICON_BOTS: int = 0
@@ -36,13 +37,36 @@ func _draw() -> void:
 	var text_color: Color = get_theme_color("text", T)
 	var dim: Color = get_theme_color("text_dim", T)
 	var chosen: bool = button_pressed and not soon
+	var rect: Rect2 = Rect2(Vector2.ZERO, size)
+	var radius: int = get_theme_constant("radius_panel", T)
+	if chosen:
+		var halo: StyleBoxFlat = StyleBoxFlat.new()
+		halo.bg_color = Color(0, 0, 0, 0)
+		halo.shadow_color = Color(accent, 0.25)
+		halo.shadow_size = 14
+		halo.set_corner_radius_all(radius)
+		draw_style_box(halo, rect)
+	# Vidro escuro com degradê; o escolhido puxa para o dourado.
+	var top: Color = Color(get_theme_color("surface_top", T), 0.75)
+	var bottom: Color = Color(get_theme_color("surface", T), 0.88)
+	if chosen:
+		top = top.lerp(Color(accent, 0.75), 0.3)
+		bottom = bottom.lerp(Color(accent, 0.88), 0.1)
+	Paint.gradient_rect(self, rect, radius, top, bottom)
 	var box: StyleBoxFlat = StyleBoxFlat.new()
-	box.bg_color = Color(accent, 0.10) if chosen else Color(get_theme_color("surface", T), 0.9)
-	box.border_color = accent if chosen else get_theme_color("surface_line", T)
+	box.draw_center = false
+	box.border_color = accent if chosen else Color(get_theme_color("surface_line", T), 0.8)
 	box.set_border_width_all(2 if chosen else 1)
-	box.set_corner_radius_all(get_theme_constant("radius_panel", T))
+	box.set_corner_radius_all(radius)
 	box.anti_aliasing = true
-	draw_style_box(box, Rect2(Vector2.ZERO, size))
+	draw_style_box(box, rect)
+	var shine: StyleBoxFlat = StyleBoxFlat.new()
+	shine.draw_center = false
+	shine.border_width_top = 1
+	shine.border_color = Color(1, 1, 1, 0.14)
+	shine.set_corner_radius_all(radius - 2)
+	shine.anti_aliasing = true
+	draw_style_box(shine, rect.grow(-2.0 if chosen else -1.0))
 
 	var alpha: float = 0.42 if soon else 1.0
 	var ink: Color = Color(accent if chosen else text_color, alpha)

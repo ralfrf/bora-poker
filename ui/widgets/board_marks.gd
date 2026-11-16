@@ -23,12 +23,12 @@ func _draw() -> void:
 	for i in 5:
 		var rect: Rect2 = Rect2(Vector2(i * (card.x + gap), 0), card)
 		var box: StyleBoxFlat = StyleBoxFlat.new()
-		box.bg_color = Color(ink, 0.04)
-		box.border_color = Color(ink, 0.2)
+		box.bg_color = Color(0, 0, 0, 0.16)
+		box.border_color = Color(ink, 0.16)
 		box.set_border_width_all(1)
 		box.set_corner_radius_all(radius)
 		box.anti_aliasing = true
 		draw_style_box(box, rect)
 		if labels[i] != "":
 			draw_string(font, Vector2(rect.position.x, rect.get_center().y + font_size * 0.36),
-				labels[i], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, font_size, Color(ink, 0.38))
+				labels[i], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, font_size, Color(ink, 0.3))

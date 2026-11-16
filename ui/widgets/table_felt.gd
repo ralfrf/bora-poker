@@ -1,110 +1,213 @@
 extends Control
-## Fundo da tela e a mesa (aro, feltro com luz no centro, linha interna). A forma da
-## mesa vem do table_shape do tema. felt_rect é o retângulo do feltro, sem o aro.
+## Fundo de salão e a mesa: sombra no chão, borda acolchoada de couro com reflexo, fio
+## dourado, feltro com luz no centro, textura de tecido e a sombra da borda caindo no
+## feltro. A forma vem do table_shape do tema. felt_rect é o retângulo do feltro, sem a
+## borda. Nada escrito no feltro.
 
+const Paint := preload("res://ui/widgets/paint.gd")
 const T: String = "Tokens"
-const RAIL: float = 9.0
+## Largura da borda acolchoada.
+const RAIL: float = 15.0
+## Pontos de cada contorno; o mesmo em todos, para ligar um contorno ao outro.
+const ARC_POINTS: int = 40
+const SIDE_POINTS: int = 16
 
 var felt_rect: Rect2 = Rect2(30, 70, 300, 440):
 	set(value):
 		felt_rect = value
 		queue_redraw()
 
-var _gradient: GradientTexture2D = null
+static var _weave: Texture2D = null
 
 
 func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_THEME_CHANGED:
-		_gradient = null
+	if what == NOTIFICATION_THEME_CHANGED or what == NOTIFICATION_RESIZED:
 		queue_redraw()
 
 
 func _draw() -> void:
-	var top: Color = get_theme_color("bg_top", T)
-	var bottom: Color = get_theme_color("bg", T)
-	draw_polygon(PackedVector2Array([Vector2.ZERO, Vector2(size.x, 0), size,
-		Vector2(0, size.y)]), PackedColorArray([top, top, bottom, bottom]))
-
+	var lights: Array[Color] = [get_theme_color("bokeh_0", T), get_theme_color("bokeh_1", T),
+		get_theme_color("bokeh_2", T)]
+	Paint.room(self, Rect2(Vector2.ZERO, size), get_theme_color("bg_top", T),
+		get_theme_color("bg", T), lights)
 	var shape: int = get_theme_constant("table_shape", T)
-	var light: bool = bottom.get_luminance() > 0.5
 	var shadow: Color = get_theme_color("shadow", T)
-	# Sombra discreta sob a mesa, em camadas.
-	for i in 4:
-		var grow: float = RAIL + 2.0 + i * 3.0
-		var points: PackedVector2Array = outline(felt_rect.grow(grow), shape, grow)
-		var offset: Vector2 = Vector2(0, 4.0 + i * 1.5)
+
+	# Sombra da mesa no chão, larga e macia.
+	for i in 10:
+		var grow: float = RAIL + 26.0 - i * 2.4
+		var points: PackedVector2Array = contour(felt_rect, shape, grow)
+		var offset: Vector2 = Vector2(0, 10.0 - i * 0.5)
 		for k in points.size():
 			points[k] += offset
-		draw_colored_polygon(points, Color(shadow, (0.07 if light else 0.16) - i * 0.012))
+		draw_colored_polygon(points, Color(shadow, 0.075))
 
-	draw_colored_polygon(outline(felt_rect.grow(RAIL), shape, RAIL),
-		get_theme_color("rail", T))
-	var felt: PackedVector2Array = outline(felt_rect, shape, 0.0)
+	_draw_rail(shape)
+	_draw_felt(shape)
+
+
+## Borda acolchoada: faixas do lado de fora para dentro, com uma crista clara no meio
+## (o couro estufado pegando luz) e mais luz na metade de cima.
+func _draw_rail(shape: int) -> void:
+	var rail: Color = get_theme_color("rail", T)
+	var high: Color = get_theme_color("rail_hi", T)
+	# Perfil da borda: posição (0 fora, 1 dentro) e quanto da luz pega.
+	var profile: Array = [[0.0, 0.0], [0.12, 0.35], [0.32, 0.9], [0.5, 0.55], [0.75, 0.2],
+		[1.0, 0.05]]
+	var rings: Array[PackedVector2Array] = []
+	var colors: Array[PackedColorArray] = []
+	var top_y: float = felt_rect.position.y - RAIL
+	var span: float = felt_rect.size.y + RAIL * 2.0
+	for step: Array in profile:
+		var points: PackedVector2Array = contour(felt_rect, shape, RAIL * (1.0 - step[0]))
+		var row: PackedColorArray = PackedColorArray()
+		for p: Vector2 in points:
+			var above: float = 1.0 - clampf((p.y - top_y) / span, 0.0, 1.0)
+			var light: float = float(step[1]) * (0.45 + 0.75 * above)
+			var color: Color = rail.lerp(high, clampf(light, 0.0, 1.0))
+			if step[0] == 0.0:
+				color = rail.darkened(0.5)
+			row.append(color)
+		rings.append(points)
+		colors.append(row)
+	_strips(rings, colors)
+	# Reflexo fino na crista do couro, só na metade de cima.
+	var ridge: PackedVector2Array = contour(felt_rect, shape, RAIL * 0.7)
+	var ridge_colors: PackedColorArray = PackedColorArray()
+	for p: Vector2 in ridge:
+		var above: float = 1.0 - clampf((p.y - top_y) / span, 0.0, 1.0)
+		ridge_colors.append(Color(1, 1, 1, 0.3 * above * above))
+	ridge.append(ridge[0])
+	ridge_colors.append(ridge_colors[0])
+	draw_polyline_colors(ridge, ridge_colors, 1.2, true)
+
+	# Fio dourado entre a borda e o feltro, mais claro em cima.
+	var trim: Color = get_theme_color("rail_line", T)
+	var outer: PackedVector2Array = contour(felt_rect, shape, 2.6)
+	var inner: PackedVector2Array = contour(felt_rect, shape, 0.0)
+	var trim_outer: PackedColorArray = PackedColorArray()
+	var trim_inner: PackedColorArray = PackedColorArray()
+	for p: Vector2 in outer:
+		var above: float = 1.0 - clampf((p.y - felt_rect.position.y) / felt_rect.size.y, 0.0, 1.0)
+		trim_outer.append(trim.lightened(0.35 * above))
+		trim_inner.append(trim.darkened(0.35 - 0.25 * above))
+	_strips([outer, inner] as Array[PackedVector2Array],
+		[trim_outer, trim_inner] as Array[PackedColorArray])
+	var edge: PackedVector2Array = outer.duplicate()
+	edge.append(outer[0])
+	draw_polyline(edge, Color(trim.darkened(0.6), 0.8), 1.0, true)
+
+
+## Feltro: degradê do centro (mais claro, um pouco acima do meio) para a borda,
+## textura de tecido, sombra da borda e a linha interna.
+func _draw_felt(shape: int) -> void:
+	var center_color: Color = get_theme_color("felt_center", T)
+	var edge_color: Color = get_theme_color("felt_edge", T)
+	var outline: PackedVector2Array = contour(felt_rect, shape, 0.0)
+	var focus: Vector2 = felt_rect.get_center() + Vector2(0, -felt_rect.size.y * 0.06)
+	var stops: Array = [[1.0, 0.0], [0.9, 0.22], [0.74, 0.5], [0.52, 0.78], [0.28, 0.94],
+		[0.0, 1.0]]
+	var rings: Array[PackedVector2Array] = []
+	var colors: Array[PackedColorArray] = []
+	for stop: Array in stops:
+		var points: PackedVector2Array = PackedVector2Array()
+		var row: PackedColorArray = PackedColorArray()
+		var color: Color = edge_color.lerp(center_color, stop[1])
+		for p: Vector2 in outline:
+			points.append(focus + (p - focus) * float(stop[0]))
+			row.append(color)
+		rings.append(points)
+		colors.append(row)
+	_strips(rings, colors)
+
+	# Textura de tecido, bem leve.
 	var uvs: PackedVector2Array = PackedVector2Array()
-	for p: Vector2 in felt:
-		uvs.append((p - felt_rect.position) / felt_rect.size)
-	draw_colored_polygon(felt, Color.WHITE, uvs, _felt_texture())
-	var rim: PackedVector2Array = felt.duplicate()
-	rim.append(felt[0])
-	draw_polyline(rim, Color(get_theme_color("rail_line", T), 0.55 if not light else 1.0),
-		1.5, true)
+	for p: Vector2 in outline:
+		uvs.append(p / 64.0)
+	draw_colored_polygon(outline, Color(1, 1, 1, 0.07), uvs, _weave_texture())
+
+	# Sombra que a borda faz no feltro.
+	var shade_in: PackedVector2Array = contour(felt_rect, shape, -14.0)
+	var dark: PackedColorArray = PackedColorArray()
+	var clear: PackedColorArray = PackedColorArray()
+	for p: Vector2 in outline:
+		dark.append(Color(0, 0, 0, 0.42))
+		clear.append(Color(0, 0, 0, 0.0))
+	_strips([outline, shade_in] as Array[PackedVector2Array],
+		[dark, clear] as Array[PackedColorArray])
+
 	if get_theme_constant("felt_lane", T) == 1:
-		var lane: PackedVector2Array = outline(felt_rect.grow(-22.0), shape, -22.0)
+		var lane: PackedVector2Array = contour(felt_rect, shape, -24.0)
 		lane.append(lane[0])
-		draw_polyline(lane, Color(get_theme_color("felt_line", T), 0.07), 1.5, true)
+		draw_polyline(lane, Color(get_theme_color("felt_line", T), 0.08), 1.5, true)
 
 
-func _felt_texture() -> GradientTexture2D:
-	if _gradient == null:
-		var gradient: Gradient = Gradient.new()
-		gradient.set_color(0, get_theme_color("felt_center", T))
-		gradient.set_color(1, get_theme_color("felt_edge", T))
-		_gradient = GradientTexture2D.new()
-		_gradient.gradient = gradient
-		_gradient.fill = GradientTexture2D.FILL_RADIAL
-		_gradient.fill_from = Vector2(0.5, 0.45)
-		_gradient.fill_to = Vector2(1.05, 0.45)
-		_gradient.width = 256
-		_gradient.height = 256
-	return _gradient
+## Liga contornos vizinhos (todos com o mesmo número de pontos) em faixas de
+## triângulos, com as cores de cada ponto.
+func _strips(rings: Array[PackedVector2Array], colors: Array[PackedColorArray]) -> void:
+	var points: PackedVector2Array = PackedVector2Array()
+	var tints: PackedColorArray = PackedColorArray()
+	var indices: PackedInt32Array = PackedInt32Array()
+	var n: int = rings[0].size()
+	for r in rings.size():
+		points.append_array(rings[r])
+		tints.append_array(colors[r])
+	for r in rings.size() - 1:
+		for i in n:
+			var a: int = r * n + i
+			var b: int = r * n + (i + 1) % n
+			var c: int = (r + 1) * n + i
+			var d: int = (r + 1) * n + (i + 1) % n
+			indices.append_array(PackedInt32Array([a, b, c, b, d, c]))
+	RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), indices, points, tints)
 
 
-## Contorno da mesa no retângulo. grow diz quanto o retângulo foi aumentado em relação
-## ao feltro, para os cantos acompanharem o aro.
-static func outline(rect: Rect2, shape: int, grow: float) -> PackedVector2Array:
+## Trama do feltro: ruído fino que se repete sem emenda, gerado uma vez.
+static func _weave_texture() -> Texture2D:
+	if _weave == null:
+		var size: int = 64
+		var image: Image = Image.create_empty(size, size, false, Image.FORMAT_RGBA8)
+		var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+		rng.seed = 7
+		for y in size:
+			for x in size:
+				var v: float = rng.randf()
+				var thread: float = 0.5 + 0.5 * sin((x + y) * 1.7) * 0.4
+				var light: bool = v * thread > 0.32
+				image.set_pixel(x, y, Color(1, 1, 1, v * 0.6) if light else Color(0, 0, 0, v * 0.8))
+		_weave = ImageTexture.create_from_image(image)
+	return _weave
+
+
+## Contorno da mesa com o feltro em rect, aumentado de grow (negativo encolhe). Sempre
+## com o mesmo número de pontos, na mesma ordem, para as faixas da borda.
+static func contour(rect: Rect2, shape: int, grow: float) -> PackedVector2Array:
 	var points: PackedVector2Array = PackedVector2Array()
 	var c: Vector2 = rect.get_center()
-	match shape:
-		1:
-			for i in 96:
-				var a: float = TAU * i / 96.0
-				points.append(c + Vector2(cos(a) * rect.size.x / 2.0, sin(a) * rect.size.y / 2.0))
-		3:
-			var k: float = rect.size.x * 0.24 + grow * 0.4
-			var p: Vector2 = rect.position
-			var e: Vector2 = rect.end
-			points = PackedVector2Array([Vector2(p.x + k, p.y), Vector2(e.x - k, p.y),
-				Vector2(e.x, p.y + k), Vector2(e.x, e.y - k), Vector2(e.x - k, e.y),
-				Vector2(p.x + k, e.y), Vector2(p.x, e.y - k), Vector2(p.x, p.y + k)])
-		_:
-			var r: float = rect.size.x / 2.0 if shape == 0 else rect.size.x * 0.24 + grow
-			r = minf(r, minf(rect.size.x, rect.size.y) / 2.0)
-			var corners: Array[Vector2] = [
-				Vector2(rect.end.x - r, rect.position.y + r), Vector2(rect.end.x - r, rect.end.y - r),
-				Vector2(rect.position.x + r, rect.end.y - r), Vector2(rect.position.x + r, rect.position.y + r)]
-			for corner in 4:
-				for step in 17:
-					var a: float = -PI / 2.0 + PI / 2.0 * corner + PI / 2.0 * step / 16.0
-					points.append(corners[corner] + Vector2(cos(a), sin(a)) * r)
-	# Sem pontos repetidos: nas pontas redondas os cantos coincidem e a triangulação falha.
-	var clean: PackedVector2Array = PackedVector2Array()
-	for p: Vector2 in points:
-		if clean.is_empty() or clean[clean.size() - 1].distance_to(p) > 0.01:
-			clean.append(p)
-	if clean.size() > 1 and clean[0].distance_to(clean[clean.size() - 1]) <= 0.01:
-		clean.remove_at(clean.size() - 1)
-	return clean
+	var total: int = (ARC_POINTS + SIDE_POINTS) * 2
+	if shape == 1:
+		for i in total:
+			var a: float = TAU * i / total
+			points.append(c + Vector2(cos(a) * (rect.size.x / 2.0 + grow),
+				sin(a) * (rect.size.y / 2.0 + grow)))
+		return points
+	# Estádio: dois lados retos e duas pontas em meia-volta.
+	var r: float = minf(rect.size.x, rect.size.y) / 2.0
+	var half: float = maxf(rect.size.x / 2.0 - r, 0.0)
+	var radius: float = maxf(r + grow, 1.0)
+	for i in SIDE_POINTS:
+		points.append(c + Vector2(-half + 2.0 * half * i / SIDE_POINTS, -radius))
+	for i in ARC_POINTS:
+		var a: float = -PI / 2.0 + PI * i / ARC_POINTS
+		points.append(c + Vector2(half, 0) + Vector2(cos(a), sin(a)) * radius)
+	for i in SIDE_POINTS:
+		points.append(c + Vector2(half - 2.0 * half * i / SIDE_POINTS, radius))
+	for i in ARC_POINTS:
+		var a: float = PI / 2.0 + PI * i / ARC_POINTS
+		points.append(c + Vector2(-half, 0) + Vector2(cos(a), sin(a)) * radius)
+	return points

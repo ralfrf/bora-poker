@@ -15,7 +15,6 @@ signal rebuy_answered(accept: bool)
 ## Toque em "Voltei" (estava ausente).
 signal back_requested
 
-const Money := preload("res://engine/money.gd")
 const CardView := preload("res://ui/widgets/card_view.gd")
 const SeatView := preload("res://ui/widgets/seat_view.gd")
 const AmountView := preload("res://ui/widgets/amount_view.gd")
@@ -29,8 +28,8 @@ const ChipFlight := preload("res://ui/widgets/chip_flight.gd")
 const SafeArea := preload("res://ui/theme/safe_area.gd")
 
 const BOARD_CARD: Vector2 = Vector2(44, 62)
-const MY_CARD: Vector2 = Vector2(50, 70)
-const THEIR_BACK: Vector2 = Vector2(14, 20)
+const MY_CARD: Vector2 = Vector2(56, 78)
+const THEIR_BACK: Vector2 = Vector2(18, 26)
 const THEIR_FACE: Vector2 = Vector2(30, 42)
 const MARGIN: float = 12.0
 const COLUMN_W: float = 136.0
@@ -120,6 +119,7 @@ func _ready() -> void:
 				pair.append(card)
 			_hole[slot] = pair
 		var seat: SeatView = SeatView.new()
+		seat.marks_up = slot == 0
 		add_child(seat)
 		_seats[slot] = seat
 		var bet: AmountView = AmountView.new()
@@ -130,7 +130,8 @@ func _ready() -> void:
 		var card: CardView = CardView.new()
 		card.size = MY_CARD
 		card.pivot_offset = Vector2(MY_CARD.x / 2.0, MY_CARD.y)
-		card.rotation_degrees = -4.0 if k == 0 else 4.0
+		card.rotation_degrees = -5.0 if k == 0 else 5.0
+		card.glow = true
 		add_child(card)
 		_mine.append(card)
 	_bar = ActionBar.new()
@@ -164,7 +165,7 @@ func _ready() -> void:
 	_prompt_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_prompt_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_prompt.add_child(_prompt_text)
-	_prompt_main = ActionBar.ActionButton.new(true)
+	_prompt_main = ActionBar.ActionButton.new("PrimaryButton")
 	_prompt_main.custom_minimum_size = Vector2(0, BAR_H)
 	_prompt_main.pressed.connect(_on_prompt.bind(true))
 	_prompt.add_child(_prompt_main)
@@ -283,6 +284,7 @@ func render(state: Dictionary) -> void:
 			"folded": entry.get("folded", false),
 			"all_in": entry.get("all_in", false) and not shown.has(seat_index),
 			"dealer": seat_index == int(table.get("button", -1)),
+			"blind": _blind_of(seat_index, table, live),
 			"tag": tag, "winner": winners.has(seat_index),
 			"away": member.get("away", false),
 		}
@@ -332,10 +334,20 @@ func render(state: Dictionary) -> void:
 	_show_banner(result, members)
 	_show_column(table, you, me, members)
 
-	var info: String = "Mão %d · Blinds %s / %s" % [int(table.get("hand", 0)),
-		Money.format(int(table.get("small_blind", 0))), Money.format(int(table.get("big_blind", 0)))]
-	_info.text = info
+	# Os blinds aparecem na mesa, na marca de quem pôs (SB e BB) e nas fichas dele.
+	_info.text = "Mão %d" % int(table.get("hand", 0))
 	_animate(events, table, board.size(), live)
+
+
+## "SB" ou "BB" para quem pôs o blind nesta mão; vazio fora da mão.
+func _blind_of(seat_index: int, table: Dictionary, live: bool) -> String:
+	if not live:
+		return ""
+	if seat_index == int(table.get("sb_seat", -1)):
+		return "SB"
+	if seat_index == int(table.get("bb_seat", -1)):
+		return "BB"
+	return ""
 
 
 ## Embaixo da coluna: os botões na sua vez; a oferta de recompra; "Voltei" quando
@@ -569,9 +581,11 @@ func _place_hole(slot: int, point: Vector2) -> void:
 		else:
 			card.size = THEIR_BACK
 			card.pivot_offset = Vector2(THEIR_BACK.x / 2.0, THEIR_BACK.y)
-			card.rotation_degrees = turn * 12.0
-			card.position = (point + Vector2(-THEIR_BACK.x / 2.0 + turn * 5.0,
-				-THEIR_BACK.y - 12.0)).round()
+			# Em leque, saindo de trás do avatar para o lado do centro da mesa.
+			var side: float = _side_of(slot)
+			card.rotation_degrees = side * (6.0 + k * 16.0)
+			card.position = (point + Vector2(-THEIR_BACK.x / 2.0 + side * (8.0 + k * 7.0),
+				-THEIR_BACK.y - 4.0 + k * 2.0)).round()
 			if card.get_index() > seat.get_index():
 				move_child(card, seat.get_index())
 

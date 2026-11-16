@@ -28,8 +28,10 @@ class ActionButton:
 	var amount: int = -1
 	var _face: Control = null
 
-	func _init(primary: bool) -> void:
-		theme_type_variation = "PrimaryButton" if primary else ""
+	## variation: "PrimaryButton" (ouro), "CallButton" (azul), "FoldButton" (vinho) ou
+	## vazio (vidro azul-noite).
+	func _init(variation: String = "") -> void:
+		theme_type_variation = variation
 		focus_mode = Control.FOCUS_NONE
 		size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		_face = Control.new()
@@ -95,9 +97,9 @@ var _raise: ActionButton = null
 
 func _init() -> void:
 	add_theme_constant_override("separation", 8)
-	_raise = ActionButton.new(true)
-	_call = ActionButton.new(false)
-	_fold = ActionButton.new(false)
+	_raise = ActionButton.new("PrimaryButton")
+	_call = ActionButton.new("CallButton")
+	_fold = ActionButton.new("FoldButton")
 	for button: ActionButton in [_raise, _call, _fold]:
 		button.custom_minimum_size = Vector2(0, MAIN_ROW)
 		add_child(button)
@@ -106,6 +108,7 @@ func _init() -> void:
 	_raise.pressed.connect(_on_raise)
 
 	sheet = PanelContainer.new()
+	sheet.theme_type_variation = "SheetPanel"
 	sheet.visible = false
 	var rows: VBoxContainer = VBoxContainer.new()
 	rows.add_theme_constant_override("separation", 8)
@@ -136,22 +139,6 @@ func _init() -> void:
 	_slider.value_changed.connect(func(value: float) -> void: _set_amount(int(value)))
 	slider_row.add_child(_slider)
 	slider_row.add_child(_step_button("+", 1))
-
-
-## O painel fica fora da barra na árvore; o estilo dele vem do tema da barra.
-func _notification(what: int) -> void:
-	if what == NOTIFICATION_THEME_CHANGED and sheet != null:
-		var box: StyleBoxFlat = StyleBoxFlat.new()
-		box.bg_color = get_theme_color("surface", T)
-		box.border_color = get_theme_color("surface_line", T)
-		box.set_border_width_all(1)
-		box.set_corner_radius_all(get_theme_constant("radius_panel", T))
-		box.anti_aliasing = true
-		box.shadow_color = Color(get_theme_color("shadow", T), 0.35)
-		box.shadow_size = 12
-		box.shadow_offset = Vector2(0, 4)
-		box.set_content_margin_all(8)
-		sheet.add_theme_stylebox_override("panel", box)
 
 
 ## Mostra as ações válidas (o campo legal de you). pot: total na mesa; step: small blind.

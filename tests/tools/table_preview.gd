@@ -1,6 +1,6 @@
 extends Control
 ## Prévia provisória das direções visuais no celular: a mesa de exemplo em tamanho
-## real. Um toque fora dos botões alterna entre as duas mesas (Meia-noite e Arena).
+## real. Um toque fora dos botões alterna entre os temas de directions.gd (hoje só um).
 
 const Directions := preload("res://ui/theme/directions.gd")
 const UiTheme := preload("res://ui/theme/ui_theme.gd")

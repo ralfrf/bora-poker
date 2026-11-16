@@ -29,5 +29,5 @@ func launch(from: Vector2, to: Vector2, delay: float, duration: float = 0.38) ->
 func _draw() -> void:
 	var fills: Array[Color] = []
 	for i in chips:
-		fills.append(get_theme_color("chip_0", T))
+		fills.append(get_theme_color("chip_%d" % (i % 3), T))
 	Paint.chip_stack(self, Vector2(0, 3.0), 6.5, fills, get_theme_color("chip_mark", T))

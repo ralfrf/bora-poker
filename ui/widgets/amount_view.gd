@@ -11,7 +11,7 @@ var amount: int = 0:
 	set(value):
 		amount = value
 		_refresh()
-## Pote: número grande sobre uma placa.
+## Pote: número grande sobre uma placa de vidro, com três pilhas de fichas.
 var big: bool = false:
 	set(value):
 		big = value
@@ -60,7 +60,7 @@ func _font_size() -> int:
 
 
 func _icon_w() -> float:
-	return _font_size() * (0.85 if big else 1.05)
+	return _font_size() * (1.45 if big else 1.05)
 
 
 func _text() -> String:
@@ -79,41 +79,63 @@ func _content_size() -> Vector2:
 			HORIZONTAL_ALIGNMENT_LEFT, -1, get_theme_font_size("small", T)).x
 	var gap: float = font_size * 0.35
 	var pad_x: float = 12.0 if big else 6.0
-	var height: float = 34.0 if big else 18.0
+	var height: float = 36.0 if big else 18.0
 	return Vector2(ceilf(pad_x * 2.0 + _icon_w() + gap + caption_w + text_w), height)
+
+
+## Cores das fichas de uma pilha: mais fichas e mais cores quanto maior o valor.
+func _fills(count: int, first: int) -> Array[Color]:
+	var fills: Array[Color] = []
+	for i in count:
+		fills.append(get_theme_color("chip_%d" % ((first + i) % 3), T))
+	return fills
 
 
 func _draw() -> void:
 	var font_size: int = _font_size()
-	var box: StyleBoxFlat = StyleBoxFlat.new()
-	var plate: Color = get_theme_color("surface", T)
-	var light: bool = get_theme_color("bg", T).get_luminance() > 0.5
-	box.bg_color = Color(plate, 0.92 if light else 0.72)
-	box.set_corner_radius_all(int(size.y / 2.0) if big \
-		else mini(get_theme_constant("radius_panel", T), int(size.y / 2.0)))
-	box.anti_aliasing = true
+	var rect: Rect2 = Rect2(Vector2.ZERO, size)
+	var corner: float = size.y / 2.0
 	if big:
-		box.border_color = Color(get_theme_color("surface_line", T), 0.9)
-		box.set_border_width_all(1)
-		if light:
-			box.shadow_color = Color(get_theme_color("shadow", T), 0.12)
-			box.shadow_size = 8
-			box.shadow_offset = Vector2(0, 2)
-	draw_style_box(box, Rect2(Vector2.ZERO, size))
+		var shadow: StyleBoxFlat = StyleBoxFlat.new()
+		shadow.bg_color = Color(0, 0, 0, 0)
+		shadow.shadow_color = Color(get_theme_color("shadow", T), 0.45)
+		shadow.shadow_size = 8
+		shadow.shadow_offset = Vector2(0, 3)
+		shadow.set_corner_radius_all(int(corner))
+		draw_style_box(shadow, rect)
+		Paint.gradient_rect(self, rect, corner, Color(get_theme_color("surface_top", T), 0.85),
+			Color(get_theme_color("surface", T), 0.9))
+		var rim: StyleBoxFlat = StyleBoxFlat.new()
+		rim.draw_center = false
+		rim.set_border_width_all(1)
+		rim.border_color = Color(get_theme_color("accent", T), 0.45)
+		rim.set_corner_radius_all(int(corner))
+		rim.anti_aliasing = true
+		draw_style_box(rim, rect)
+	else:
+		var box: StyleBoxFlat = StyleBoxFlat.new()
+		box.bg_color = Color(0, 0, 0, 0.5)
+		box.set_corner_radius_all(int(corner))
+		box.anti_aliasing = true
+		draw_style_box(box, rect)
 	var pad_x: float = 12.0 if big else 6.0
 	var icon_center: Vector2 = Vector2(pad_x + _icon_w() / 2.0, size.y / 2.0)
-	var chip_style: int = get_theme_constant("chip_style", T)
 	var mark: Color = get_theme_color("chip_mark", T)
-	if stack:
-		var fills: Array[Color] = []
+	if big:
+		# Três pilhas lado a lado, de alturas diferentes.
+		var r: float = _icon_w() * 0.2
+		var heights: Array[int] = [3, 5, 2]
+		for k in 3:
+			var x: float = icon_center.x + (k - 1) * r * 1.75
+			var y: float = icon_center.y + 7.0 + (1.0 if k == 1 else 0.0)
+			Paint.chip_stack(self, Vector2(x, y), r, _fills(heights[k], k), mark)
+	elif stack:
 		var count: int = clampi(int(log(maxf(amount, 1) / 100.0 + 1.0) / log(3.0)) + 1, 1, 4)
-		for i in count:
-			fills.append(get_theme_color("chip_0", T))
 		Paint.chip_stack(self, icon_center + Vector2(0, 2.0 + count * 0.9),
-			_icon_w() * 0.42, fills, mark)
+			_icon_w() * 0.42, _fills(count, 0), mark)
 	else:
-		Paint.chip(self, icon_center, _icon_w() * (0.42 if big else 0.36),
-			get_theme_color("chip_0", T), mark, chip_style)
+		Paint.chip(self, icon_center, _icon_w() * 0.36, get_theme_color("chip_0", T), mark,
+			get_theme_constant("chip_style", T))
 	var x: float = pad_x + _icon_w() + font_size * 0.35
 	var baseline: float = size.y / 2.0 + font_size * 0.36
 	if caption != "":
@@ -122,5 +144,7 @@ func _draw() -> void:
 		draw_string(text_font, Vector2(x, size.y / 2.0 + small * 0.36), caption + " ",
 			HORIZONTAL_ALIGNMENT_LEFT, -1, small, get_theme_color("text_dim", T))
 		x += text_font.get_string_size(caption + " ", HORIZONTAL_ALIGNMENT_LEFT, -1, small).x
+	draw_string(_font(), Vector2(x, baseline + 1.0), _text(), HORIZONTAL_ALIGNMENT_LEFT, -1,
+		font_size, Color(0, 0, 0, 0.5))
 	draw_string(_font(), Vector2(x, baseline), _text(), HORIZONTAL_ALIGNMENT_LEFT, -1,
 		font_size, get_theme_color("text", T))

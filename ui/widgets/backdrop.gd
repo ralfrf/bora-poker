@@ -1,7 +1,8 @@
 extends Control
-## Fundo das telas fora da mesa: o mesmo degradê do fundo da mesa, com uma luz suave
-## atrás do conteúdo.
+## Fundo das telas fora da mesa: o mesmo salão da mesa (degradê, luzes desfocadas e
+## vinheta), com uma luz verde bem fraca lembrando o feltro.
 
+const Paint := preload("res://ui/widgets/paint.gd")
 const T: String = "Tokens"
 
 
@@ -15,13 +16,10 @@ func _notification(what: int) -> void:
 
 
 func _draw() -> void:
-	var top: Color = get_theme_color("bg_top", T)
-	var bottom: Color = get_theme_color("bg", T)
-	draw_polygon(PackedVector2Array([Vector2.ZERO, Vector2(size.x, 0), size,
-		Vector2(0, size.y)]), PackedColorArray([top, top, bottom, bottom]))
-	# Luz do feltro, bem fraca, para lembrar a mesa.
-	var glow: Color = get_theme_color("felt_center", T)
-	var center: Vector2 = Vector2(size.x * 0.4, size.y * 0.55)
-	for i in 6:
-		var r: float = size.y * (0.95 - i * 0.13)
-		draw_circle(center, r, Color(glow, 0.022), true, -1.0, true)
+	var lights: Array[Color] = [get_theme_color("bokeh_0", T), get_theme_color("bokeh_1", T),
+		get_theme_color("bokeh_2", T)]
+	Paint.room(self, Rect2(Vector2.ZERO, size), get_theme_color("bg_top", T),
+		get_theme_color("bg", T), lights)
+	var glow: Vector2 = Vector2(size.x * 0.9, size.y * 1.1)
+	draw_texture_rect(Paint.soft_disc(), Rect2(Vector2(size.x * 0.4, size.y * 0.6) - glow / 2.0,
+		glow), false, Color(get_theme_color("felt_center", T), 0.12))
