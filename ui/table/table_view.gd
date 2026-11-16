@@ -17,6 +17,8 @@ signal rebuy_answered(accept: bool)
 signal back_requested
 ## Toque no "?": abrir o ranking das mãos.
 signal help_requested
+## Toque no botão do histórico: abrir as últimas mãos.
+signal history_requested
 
 const CardView := preload("res://ui/widgets/card_view.gd")
 const SeatView := preload("res://ui/widgets/seat_view.gd")
@@ -30,6 +32,7 @@ const BoardMarks := preload("res://ui/widgets/board_marks.gd")
 const ChipFlight := preload("res://ui/widgets/chip_flight.gd")
 const SafeArea := preload("res://ui/theme/safe_area.gd")
 const Sfx := preload("res://ui/app/sfx.gd")
+const ListIcon := preload("res://ui/widgets/list_icon_button.gd")
 
 const BOARD_CARD: Vector2 = Vector2(44, 62)
 const MY_CARD: Vector2 = Vector2(56, 78)
@@ -76,6 +79,7 @@ var _ad: AdSlot = null
 var _marks: BoardMarks = null
 var _exit: Button = null
 var _help: Button = null
+var _history: Button = null
 var _my_turn: bool = false
 var _warned: bool = false
 var _banner: AmountView = null
@@ -172,6 +176,9 @@ func _ready() -> void:
 	_help.focus_mode = Control.FOCUS_NONE
 	_help.pressed.connect(func() -> void: help_requested.emit())
 	add_child(_help)
+	_history = ListIcon.new()
+	_history.pressed.connect(func() -> void: history_requested.emit())
+	add_child(_history)
 	_prompt = VBoxContainer.new()
 	_prompt.add_theme_constant_override("separation", 8)
 	_prompt.alignment = BoxContainer.ALIGNMENT_END
@@ -673,6 +680,8 @@ func _layout() -> void:
 	_exit.position = (Vector2(area.position.x + MARGIN, area.end.y - MARGIN - 40.0)).round()
 	_help.size = Vector2(40, 40)
 	_help.position = _exit.position + Vector2(_exit.size.x + 8.0, 0)
+	_history.size = Vector2(40, 40)
+	_history.position = _help.position + Vector2(48.0, 0)
 	if _banner.visible:
 		_banner.place_at(_banner_point())
 

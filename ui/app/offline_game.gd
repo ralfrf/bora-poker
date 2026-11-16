@@ -68,6 +68,11 @@ func rebuy(accept: bool) -> void:
 	_client.send({"t": Protocol.REBUY, "accept": accept})
 
 
+## Pede o histórico das mãos; a resposta chega em update() como mensagem "hands".
+func history() -> void:
+	_client.send({"t": Protocol.HISTORY})
+
+
 ## "Voltei": deixa de estar ausente.
 func back() -> void:
 	_client.send({"t": Protocol.AWAY, "on": false})

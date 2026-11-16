@@ -2,7 +2,7 @@ extends Control
 ## Abre uma tela do app com dados de exemplo, para as fotos (tests/tools/shot.gd).
 ## Nada é gravado no perfil de verdade.
 ##   --screen=profile | profile_edit | home | setup | setup_t | game | showdown |
-##            rebuy | watching | ranking | result | result_t | live | settings |
+##            rebuy | watching | ranking | history | result | result_t | live | settings |
 ##            help | rules
 ##   --seed=N  (game e showdown: muda a mesa sorteada)
 
@@ -63,6 +63,8 @@ func _ready() -> void:
 			screen = HelpScreen.new(1)
 		"ranking":
 			screen = _game("game", seats, false, true)
+		"history":
+			screen = _game("history", seats)
 		"watching":
 			# Recompra recusada por enquanto: assistindo, com "Voltar ao jogo".
 			screen = _game("rebuy", seats, true)
@@ -106,6 +108,10 @@ func _game(kind: String, seats: int, watching: bool = false, ranking: bool = fal
 				"rebuy":
 					if you.has("rebuy_ms"):
 						target = message
+				"history":
+					var log: Object = game.get("_server").rooms[game.room_id].history
+					if you.has("legal") and log.last_hand() >= 6:
+						target = message
 			if target.is_empty() and you.has("legal"):
 				var legal: Dictionary = you["legal"]
 				if kind == "rebuy" and legal["can_raise"]:
@@ -126,7 +132,11 @@ func _game(kind: String, seats: int, watching: bool = false, ranking: bool = fal
 		screen.get_child(0).set("_watching", watching)
 		screen.get_child(0).call("render", target)
 		if ranking:
-			screen.open_ranking(), CONNECT_DEFERRED)
+			screen.open_ranking()
+		if kind == "history":
+			var log: Object = game.get("_server").rooms[game.room_id].history
+			screen.open_history()
+			screen.get("_history").set_hands(log.for_member(game.my_id), game.my_id), CONNECT_DEFERRED)
 	return screen
 
 

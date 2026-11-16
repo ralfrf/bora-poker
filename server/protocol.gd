@@ -15,6 +15,7 @@ const ACT: String = "act"                   ## {seq, action, amount}
 const REBUY: String = "rebuy"               ## {accept}
 const SIT: String = "sit"                   ## {seat} (seat é opcional)
 const AWAY: String = "away"                 ## {on}: verdadeiro = ausente, falso = "Voltei"
+const HISTORY: String = "history"           ## {}: pede o histórico das mãos
 const OWNER: String = "owner"               ## {cmd, ...} (só o dono)
 const PING: String = "ping"                 ## {}
 # Reservadas para as próximas etapas.
@@ -31,6 +32,7 @@ const LEFT: String = "left"         ## {reason}: "left" ou "kicked"
 const CLOSED: String = "closed"     ## {reason, scoreboard, podium}
 const ERROR: String = "error"       ## {code, text}
 const PONG: String = "pong"         ## {}
+const HANDS: String = "hands"       ## {hands}: as últimas mãos, da mais recente (server/hand_log.gd)
 # Reservadas para as próximas etapas.
 const REACTION: String = "reaction"           ## etapa 4
 const RETURN_OFFER: String = "return_offer"   ## etapa 4

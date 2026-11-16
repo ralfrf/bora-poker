@@ -13,6 +13,7 @@ const Table := preload("res://engine/table.gd")
 const Hand := preload("res://engine/hand.gd")
 const Tournament := preload("res://engine/tournament.gd")
 const View := preload("res://server/view.gd")
+const HandLog := preload("res://server/hand_log.gd")
 const Protocol := preload("res://server/protocol.gd")
 const Clock := preload("res://server/clock.gd")
 const Bot := preload("res://bots/bot.gd")
@@ -98,6 +99,7 @@ var _names: Dictionary = {}        ## id -> apelido de todos os que já sentaram
 var _banned: Dictionary = {}       ## aparelhos expulsos
 var _held_until: Dictionary = {}   ## id -> fim do prazo das fichas guardadas (relógio real)
 var _pending_settings: Dictionary = {}
+var history: HandLog = HandLog.new()   ## as últimas mãos terminadas (SPEC 11.2)
 var _notes: Array = []             ## avisos da sala que vão na próxima mensagem "state"
 
 
@@ -221,6 +223,10 @@ func handle(member_id: String, message: Dictionary) -> void:
 		return
 	var problem: String = ""
 	match message.get("t"):
+		Protocol.HISTORY:
+			# Qualquer um da sala, inclusive quem assiste, vê o histórico.
+			_send_to(member, {"t": Protocol.HANDS, "hands": history.for_member(member.id)})
+			return
 		Protocol.START:
 			problem = start() if member.id == owner_id else "só o dono começa a partida"
 		Protocol.ACT:
@@ -844,6 +850,7 @@ func _broadcast(events: Array) -> void:
 	var all: Array = _notes
 	_notes = []
 	all.append_array(events)
+	history.note(all, table, _hand_ids, _names)
 	var info: Dictionary = _room_info()
 	var table_view: Dictionary = _table_view()
 	for member: Member in members.values():
