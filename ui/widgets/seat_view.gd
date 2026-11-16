@@ -135,15 +135,18 @@ func _draw() -> void:
 	var text_w: float = text_right - text_left
 	var small: int = get_theme_font_size("small", T)
 	var tag: String = "All-in" if data.get("all_in", false) else String(data.get("tag", ""))
-	var first: String = tag if tag != "" else String(data.get("nick", ""))
 	var font: Font = get_theme_font("strong", T)
 	var name_at: Vector2 = Vector2(text_left, plate.position.y + 15.0)
-	var name_text: String = _ellipsis(font, first, small, text_w)
+	var name_text: String = _ellipsis(font, String(data.get("nick", "")), small, text_w)
 	draw_string(font, name_at + Vector2(0, 1), name_text, HORIZONTAL_ALIGNMENT_CENTER, text_w,
 		small, Color(0, 0, 0, 0.5))
 	draw_string(font, name_at, name_text, HORIZONTAL_ALIGNMENT_CENTER, text_w, small,
-		accent if tag != "" else Color(text_color, 0.88))
+		Color(text_color, 0.88))
 	_amount(int(data.get("stack", 0)), text_left, text_w, plate.position.y + 30.0)
+	# A última ação (ou o nome da mão no showdown) numa etiqueta presa embaixo da placa,
+	# para o apelido continuar à vista.
+	if tag != "":
+		_tag(tag, Vector2(text_left + text_w / 2.0, plate.end.y + 3.0), plate.size.x - r)
 
 	# Marcas embaixo, do lado do centro da mesa (em cima ficam as cartas).
 	var dealer: bool = data.get("dealer", false)
@@ -159,6 +162,38 @@ func _draw() -> void:
 		_dealer(center + Vector2(side * (r + 9.0), 13.0), small)
 	if blind != "":
 		_blind(center + Vector2(side * (r + (30.0 if dealer else 13.0)), 13.0), blind, small)
+
+
+## Etiqueta da ação: cinza para Desistiu, azul para Passou e Pagou, vermelho para
+## All-in e dourado para Apostou, Aumentou e o nome da mão.
+func _tag(text: String, center: Vector2, max_w: float) -> void:
+	var font: Font = get_theme_font("strong", T)
+	var font_size: int = get_theme_font_size("small", T) - 2
+	var fill: Color = get_theme_color("accent", T)
+	var ink: Color = get_theme_color("on_accent", T)
+	match text:
+		"Desistiu":
+			fill = get_theme_color("surface_line", T)
+			ink = get_theme_color("text", T)
+		"Passou", "Pagou":
+			fill = get_theme_color("call_top", T)
+			ink = get_theme_color("text", T)
+		"All-in":
+			fill = get_theme_color("danger", T)
+			ink = get_theme_color("text", T)
+	var label: String = _ellipsis(font, text, font_size, max_w - 12.0)
+	var w: float = font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x + 12.0
+	var pill: Rect2 = Rect2(center - Vector2(w, 14.0) / 2.0, Vector2(w, 14.0))
+	var shadow: StyleBoxFlat = StyleBoxFlat.new()
+	shadow.bg_color = Color(0, 0, 0, 0)
+	shadow.shadow_color = Color(0, 0, 0, 0.4)
+	shadow.shadow_size = 3
+	shadow.shadow_offset = Vector2(0, 1)
+	shadow.set_corner_radius_all(7)
+	draw_style_box(shadow, pill)
+	Paint.gradient_rect(self, pill, 7.0, fill.lightened(0.15), fill.darkened(0.15))
+	draw_string(font, Vector2(pill.position.x, center.y + font_size * 0.36), label,
+		HORIZONTAL_ALIGNMENT_CENTER, w, font_size, ink)
 
 
 ## Marcador de recompras: um disco dourado pequeno com o número de recompras.
