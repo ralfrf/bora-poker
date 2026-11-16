@@ -10,7 +10,8 @@ extends Control
 signal acted(action: String, amount: int)
 ## Toque em "Sair", no canto de cima.
 signal leave_requested
-## Resposta à oferta de recompra.
+## Pedido de recompra (true). Continuar assistindo não manda nada: a oferta não tem
+## prazo e o botão "Voltar ao jogo" abre a pergunta de novo.
 signal rebuy_answered(accept: bool)
 ## Toque em "Voltei" (estava ausente).
 signal back_requested
@@ -73,9 +74,11 @@ var _banner: AmountView = null
 var _prompt: VBoxContainer = null
 var _prompt_text: Label = null
 var _prompt_main: ActionBar.ActionButton = null
-var _prompt_alt: Button = null
+var _prompt_alt: ActionBar.ActionButton = null
 var _prompt_kind: String = ""
 var _rebuy_left_ms: int = -1
+## Escolheu continuar assistindo em vez de recomprar (até a oferta acabar).
+var _watching: bool = false
 
 var _state: Dictionary = {}
 var _seat_count: int = 8
@@ -169,8 +172,7 @@ func _ready() -> void:
 	_prompt_main.custom_minimum_size = Vector2(0, BAR_H)
 	_prompt_main.pressed.connect(_on_prompt.bind(true))
 	_prompt.add_child(_prompt_main)
-	_prompt_alt = Button.new()
-	_prompt_alt.focus_mode = Control.FOCUS_NONE
+	_prompt_alt = ActionBar.ActionButton.new()
 	_prompt_alt.custom_minimum_size = Vector2(0, BAR_H)
 	_prompt_alt.pressed.connect(_on_prompt.bind(false))
 	_prompt.add_child(_prompt_alt)
@@ -286,7 +288,7 @@ func render(state: Dictionary) -> void:
 			"dealer": seat_index == int(table.get("button", -1)),
 			"blind": _blind_of(seat_index, table, live),
 			"tag": tag, "winner": winners.has(seat_index),
-			"away": member.get("away", false),
+			"away": member.get("away", false), "rebuys": int(member.get("rebuys", 0)),
 		}
 		var bet: int = int(entry.get("bet", 0))
 		if live and bet > 0:
@@ -358,7 +360,7 @@ func _show_column(table: Dictionary, you: Dictionary, me: Dictionary,
 	var kind: String = ""
 	if legal.is_empty():
 		if you.has("rebuy_ms"):
-			kind = "rebuy"
+			kind = "watching" if _watching else "rebuy"
 		elif me.get("away", false) and _my_seat >= 0:
 			kind = "away"
 	_bar.visible = not legal.is_empty()
@@ -370,15 +372,21 @@ func _show_column(table: Dictionary, you: Dictionary, me: Dictionary,
 	else:
 		_bar.close_sheet()
 		_waiting.text = _waiting_text(table, you, members)
+	if not you.has("rebuy_ms"):
+		_watching = false
 	_prompt_kind = kind
 	_rebuy_left_ms = int(you.get("rebuy_ms", -1))
 	match kind:
 		"rebuy":
 			var stack: int = int(_state.get("room", {}).get("options", {}).get("starting_stack", 0))
 			_prompt_main.set_content("Recomprar", stack)
-			_prompt_alt.text = "Sair da mesa"
+			_prompt_alt.set_content("Continuar assistindo", -1)
 			_prompt_alt.visible = true
 			_refresh_rebuy_text()
+		"watching":
+			_prompt_text.text = "Você está assistindo a partida."
+			_prompt_main.set_content("Voltar ao jogo", -1)
+			_prompt_alt.visible = false
 		"away":
 			_prompt_text.text = "Você ficou ausente e está desistindo das mãos."
 			_prompt_main.set_content("Voltei", -1)
@@ -387,15 +395,25 @@ func _show_column(table: Dictionary, you: Dictionary, me: Dictionary,
 
 
 func _refresh_rebuy_text() -> void:
-	if _prompt_kind == "rebuy":
-		_prompt_text.text = "Suas fichas acabaram. %d s para decidir." % ceili(
-			maxi(_rebuy_left_ms, 0) / 1000.0)
+	if _prompt_kind != "rebuy":
+		return
+	var text: String = "Suas fichas acabaram. Veja um anúncio e volte com as fichas iniciais."
+	if _rebuy_left_ms >= 0:
+		text += " %d s para decidir." % ceili(_rebuy_left_ms / 1000.0)
+	_prompt_text.text = text
 
 
 func _on_prompt(main: bool) -> void:
 	match _prompt_kind:
 		"rebuy":
-			rebuy_answered.emit(main)
+			if main:
+				rebuy_answered.emit(true)
+			else:
+				_watching = true
+				render(_state)
+		"watching":
+			_watching = false
+			render(_state)
 		"away":
 			back_requested.emit()
 

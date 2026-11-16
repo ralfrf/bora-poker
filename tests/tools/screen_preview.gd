@@ -52,6 +52,9 @@ func _ready() -> void:
 			screen = OfflineSetupScreen.new(profile)
 		"game", "showdown", "rebuy":
 			screen = _game(screen_name, seats)
+		"watching":
+			# Recompra recusada por enquanto: assistindo, com "Voltar ao jogo".
+			screen = _game("rebuy", seats, true)
 		"live":
 			# Partida com relógio de verdade e bots no tempo normal (teste de fumaça).
 			var live: OfflineGame = OfflineGame.new()
@@ -65,7 +68,7 @@ func _ready() -> void:
 
 
 ## Partida de verdade, com relógio manual: anda até a situação pedida e congela.
-func _game(kind: String, seats: int) -> Control:
+func _game(kind: String, seats: int, watching: bool = false) -> Control:
 	var clock: Clock = Clock.new(true)
 	var game: OfflineGame = OfflineGame.new(clock, FAST, func() -> int:
 		_seed += 1
@@ -100,9 +103,16 @@ func _game(kind: String, seats: int) -> Control:
 					game.act("check" if legal["can_check"] else "call", 0)
 		if not target.is_empty():
 			break
+	if kind == "rebuy" and not target.is_empty():
+		# Um bot que já recomprou duas vezes, para a foto mostrar o marcador.
+		for member: Dictionary in target["room"]["members"]:
+			if member.get("bot", false) and int(member.get("seat", -1)) >= 0:
+				member["rebuys"] = 2
+				break
 	var screen: GameScreen = GameScreen.new(game)
 	screen.ready.connect(func() -> void:
 		screen.set_process(false)
+		screen.get_child(0).set("_watching", watching)
 		screen.get_child(0).call("render", target), CONNECT_DEFERRED)
 	return screen
 

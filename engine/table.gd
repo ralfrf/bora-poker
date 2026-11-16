@@ -325,6 +325,12 @@ func rebuy(index: int) -> String:
 	return ""
 
 
+## Quantas recompras esse participante já fez nesta mesa (0 se nunca sentou).
+func rebuys_of(id: String) -> int:
+	var seat: Seat = _record(id)
+	return seat.rebuys if seat != null else 0
+
+
 ## Verdadeiro se esse participante já sentou nesta mesa alguma vez.
 func knows(id: String) -> bool:
 	return _record(id) != null

@@ -13,7 +13,7 @@ const AVATAR: float = 40.0
 const PLATE_H: float = 36.0
 
 ## nick, stack, avatar, turn, fraction (0 a 1 do tempo que resta), folded, all_in,
-## dealer, blind ("SB", "BB" ou vazio), tag (texto curto da última ação), winner,
+## dealer, blind ("SB", "BB" ou vazio), rebuys (recompras feitas), tag (texto curto da última ação), winner,
 ## away, empty.
 var data: Dictionary = {}:
 	set(value):
@@ -123,6 +123,12 @@ func _draw() -> void:
 	elif winner:
 		draw_arc(center, r + 2.5, 0, TAU, 64, accent, 3.0, true)
 
+	# Marcador de recompras no avatar, do lado de fora (no seu lugar, embaixo).
+	var rebuys: int = int(data.get("rebuys", 0))
+	if rebuys > 0:
+		var corner_y: float = r * 0.74 if marks_up else -r * 0.74
+		_rebuy_badge(center + Vector2(-side * r * 0.74, corner_y), rebuys)
+
 	# Texto na parte da placa que o avatar não cobre.
 	var text_left: float = plate.position.x + (8.0 if side > 0.0 else r + 4.0)
 	var text_right: float = plate.end.x - (r + 4.0 if side > 0.0 else 8.0)
@@ -153,6 +159,20 @@ func _draw() -> void:
 		_dealer(center + Vector2(side * (r + 9.0), 13.0), small)
 	if blind != "":
 		_blind(center + Vector2(side * (r + (30.0 if dealer else 13.0)), 13.0), blind, small)
+
+
+## Marcador de recompras: um disco dourado pequeno com o número de recompras.
+func _rebuy_badge(spot: Vector2, count: int) -> void:
+	var text: String = str(count) if count < 10 else "9+"
+	var font: Font = get_theme_font("display", T)
+	var font_size: int = 9
+	var radius: float = 7.5 if count < 10 else 9.0
+	draw_circle(spot + Vector2(0, 1.2), radius, Color(0, 0, 0, 0.45), true, -1.0, true)
+	draw_circle(spot, radius, get_theme_color("accent_line", T), true, -1.0, true)
+	draw_circle(spot, radius - 1.2, get_theme_color("accent", T), true, -1.0, true)
+	draw_arc(spot, radius - 2.0, PI * 1.15, PI * 1.85, 10, Color(1, 1, 1, 0.45), 1.0, true)
+	draw_string(font, Vector2(spot.x - radius, spot.y + font_size * 0.36), text,
+		HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, font_size, get_theme_color("on_accent", T))
 
 
 ## Botão do dealer: uma ficha branca com "B".

@@ -5,6 +5,7 @@ extends Control
 
 signal finished(final: Dictionary, members: Array, my_id: String)
 
+const Ads := preload("res://ui/app/ads.gd")
 const OfflineGame := preload("res://ui/app/offline_game.gd")
 const TableView := preload("res://ui/table/table_view.gd")
 const Dialog := preload("res://ui/widgets/dialog.gd")
@@ -56,11 +57,13 @@ func _ask_leave() -> void:
 		["Sair", "Continuar jogando"])
 
 
+## Recompra: primeiro o anúncio, depois o pedido ao servidor. Quem prefere assistir não
+## responde nada: a oferta fica aberta, sem prazo, e a mesa mostra "Voltar ao jogo".
 func _on_rebuy(accept: bool) -> void:
 	if accept:
-		_game.rebuy(true)
-	else:
-		_finish(_game.leave())
+		Ads.rewarded(func(watched: bool) -> void:
+			if watched and not _done:
+				_game.rebuy(true))
 
 
 func _finish(final: Dictionary) -> void:

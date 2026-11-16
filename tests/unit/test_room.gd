@@ -85,7 +85,7 @@ func _shove(room: Room) -> void:
 func _bust_someone(room: Room) -> String:
 	for _i in 400:
 		for member: Room.Member in room.members.values():
-			if member.rebuy_deadline >= 0 or (member.seat < 0 and not member.is_bot and room.table.knows(member.id)):
+			if member.rebuy_offer or (member.seat < 0 and not member.is_bot and room.table.knows(member.id)):
 				return member.id
 		if room.is_closed():
 			return ""
@@ -297,11 +297,17 @@ func test_rebuy_accepted() -> void:
 	room.handle(pair[1], {"t": Protocol.START})
 	var loser: String = _bust_someone(room)
 	assert_true(loser != "", "alguém zerou")
-	assert_true(int(_last(loser, Protocol.STATE)["you"]["rebuy_ms"]) > 0, "o prazo da oferta viaja")
+	assert_eq(int(_last(loser, Protocol.STATE)["you"]["rebuy_ms"]), -1, "oferta sem prazo")
+	_clock.advance(3600000)
+	room.tick()
+	assert_true(room.members[loser].rebuy_offer, "uma hora depois a oferta continua")
 	room.handle(loser, {"t": Protocol.REBUY, "accept": true})
 	var seat: Table.Seat = room.table.seat_at(room.members[loser].seat)
 	assert_eq(seat.rebuys, 1)
-	assert_eq(room.members[loser].rebuy_deadline, -1)
+	assert_false(room.members[loser].rebuy_offer)
+	var mine: Array = _last(loser, Protocol.STATE)["room"]["members"].filter(
+		func(m: Dictionary) -> bool: return m["id"] == loser)
+	assert_eq(int(mine[0]["rebuys"]), 1, "o marcador de recompras viaja para todos")
 	assert_true(room.table.hand_in_progress(), "o jogo seguiu")
 	assert_eq(_total_chips(room), 6000, "duas entradas e uma recompra")
 	assert_true(room.table.is_balanced())
@@ -322,9 +328,10 @@ func test_rebuy_declined_then_sits_again() -> void:
 	assert_true(room.table.is_balanced())
 
 
+## Com prazo configurado (hoje não se usa; o padrão é sem prazo), a oferta vence.
 func test_rebuy_offer_expires() -> void:
-	var pair: Array = _classic_pair()
-	var room: Room = pair[0]
+	var room: Room = _room({"format": Table.CLASSIC, "seats": 4}, {"rebuy_ms": 60000})
+	var pair: Array = [room, _join(room, "Ana", "dev-a"), _join(room, "Bruno", "dev-b")]
 	room.handle(pair[1], {"t": Protocol.START})
 	var loser: String = _bust_someone(room)
 	_clock.advance(59999)

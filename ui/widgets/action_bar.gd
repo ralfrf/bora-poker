@@ -57,6 +57,10 @@ class ActionButton:
 		var font: Font = get_theme_font("font")
 		var font_size: int = get_theme_font_size("font_size")
 		if amount < 0:
+			# Rótulo longo encolhe até caber na coluna estreita.
+			while font_size > 10 and font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1,
+					font_size).x > size.x - 16.0:
+				font_size -= 1
 			_face.draw_string(font, Vector2(0, size.y / 2.0 + font_size * 0.36), label,
 				HORIZONTAL_ALIGNMENT_CENTER, size.x, font_size, ink)
 			return

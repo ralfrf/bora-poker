@@ -35,7 +35,7 @@ const DEFAULT_CONFIG: Dictionary = {
 	"showdown_gap_ms": 7000,    # a mesma espera, depois de um showdown
 	"bot_min_ms": 1000,         # o bot demora de 1 a 3 s para agir (SPEC 7)
 	"bot_max_ms": 3000,
-	"rebuy_ms": 60000,          # prazo para aceitar a recompra (SPEC 3.4)
+	"rebuy_ms": 0,              # prazo da oferta de recompra; 0 = sem prazo (SPEC 3.4)
 	"held_ms": 600000,          # fichas guardadas de quem saiu (SPEC 6.2)
 	"allow_empty": false,       # sala sem humanos continua aberta (simulações)
 	"bot_evaluations": 0,       # teto de simulação do Difícil (0 = o padrão)
@@ -63,7 +63,8 @@ class Member:
 	var leaving: bool = false      ## saiu no meio de uma mão: deixa o lugar quando ela acabar
 	var gone: bool = false         ## torneio: saiu, mas o lugar fica e paga os blinds
 	var forfeit: bool = false      ## as fichas saem da mesa de vez (expulso, bot retirado)
-	var rebuy_deadline: int = -1   ## oferta de recompra pendente (tempo da sala)
+	var rebuy_offer: bool = false  ## oferta de recompra pendente
+	var rebuy_deadline: int = -1   ## prazo da oferta (tempo da sala); -1 sem prazo
 
 
 var id: String = ""
@@ -377,12 +378,13 @@ func _answer_rebuy(member: Member, message: Dictionary) -> String:
 	var accept: Variant = message.get("accept")
 	if typeof(accept) != TYPE_BOOL:
 		return "resposta malformada"
-	if member.rebuy_deadline < 0 or member.seat < 0:
+	if not member.rebuy_offer or member.seat < 0:
 		return "não há recompra pendente"
 	if accept:
 		var problem: String = table.rebuy(member.seat)
 		if problem != "":
 			return problem
+		member.rebuy_offer = false
 		member.rebuy_deadline = -1
 		_notes.append({"type": "rebuy", "seat": member.seat})
 	else:
@@ -616,7 +618,9 @@ func _after(events: Array) -> void:
 						table.decline_rebuy(member.seat)
 						_to_spectator(member)
 				else:
-					member.rebuy_deadline = _now() + int(_config["rebuy_ms"])
+					member.rebuy_offer = true
+					var limit: int = int(_config["rebuy_ms"])
+					member.rebuy_deadline = _now() + limit if limit > 0 else -1
 			"eliminated":
 				_to_spectator(member)
 	var all: Array = []
@@ -672,7 +676,7 @@ func _check_over() -> bool:
 
 func _expire_rebuys(now: int) -> bool:
 	for member: Member in members.values():
-		if member.rebuy_deadline >= 0 and now >= member.rebuy_deadline:
+		if member.rebuy_offer and member.rebuy_deadline >= 0 and now >= member.rebuy_deadline:
 			_decline_rebuy(member)
 			_broadcast([])
 			return true
@@ -776,6 +780,7 @@ func _decline_rebuy(member: Member) -> void:
 ## Perdeu o lugar: vira espectador. Bot e quem já tinha saído deixam a sala.
 func _to_spectator(member: Member) -> void:
 	member.seat = -1
+	member.rebuy_offer = false
 	member.rebuy_deadline = -1
 	member.away = false
 	if member.is_bot or member.gone or member.leaving:
@@ -811,6 +816,7 @@ func _leave_table(member: Member) -> void:
 			else:
 				_held_until[member.id] = _clock.now_ms() + int(_config["held_ms"])
 	member.seat = -1
+	member.rebuy_offer = false
 	member.rebuy_deadline = -1
 
 
@@ -848,8 +854,9 @@ func _state_for(member: Member, info: Dictionary, table_view: Dictionary, events
 	var you: Dictionary = View.own(table, member.seat, member.id, _hand_ids)
 	you["id"] = member.id
 	you["seat"] = member.seat
-	if member.rebuy_deadline >= 0:
-		you["rebuy_ms"] = maxi(0, member.rebuy_deadline - _now())
+	# rebuy_ms: o que falta do prazo da oferta, ou -1 quando não há prazo.
+	if member.rebuy_offer:
+		you["rebuy_ms"] = maxi(0, member.rebuy_deadline - _now()) if member.rebuy_deadline >= 0 else -1
 	return {"t": Protocol.STATE, "room": info, "table": table_view, "you": you, "events": events}
 
 
@@ -872,7 +879,7 @@ func _room_info() -> Dictionary:
 			"id": member.id, "nick": member.nick, "avatar": member.avatar,
 			"bot": member.is_bot, "level": member.level, "style": member.style,
 			"seat": member.seat, "away": member.away or member.gone or member.leaving,
-			"connected": member.connected,
+			"connected": member.connected, "rebuys": table.rebuys_of(member.id),
 		})
 	return {
 		"id": id, "name": name, "phase": phase, "paused": paused, "owner": owner_id,
