@@ -97,7 +97,13 @@ static func chip_stack(ci: CanvasItem, base: Vector2, radius: float,
 ## Avatar provisório: disco colorido com sombreado de esfera e um emblema simples.
 static func avatar(ci: CanvasItem, rect: Rect2, index: int, colors: Array[Color],
 		shape: int, radius: float) -> void:
-	var fill: Color = colors[index % colors.size()]
+	var color_index: int = index % colors.size()
+	var emblem: int = index % 6
+	# A estrela no vermelho saiu a pedido do dono; no lugar, espadas no dourado.
+	if emblem == 0 and color_index == 0:
+		emblem = 5
+		color_index = 4 % colors.size()
+	var fill: Color = colors[color_index]
 	var ink: Color = Color(1, 1, 1, 0.96) if fill.get_luminance() < 0.6 \
 		else Color(0.06, 0.08, 0.1, 0.9)
 	var center: Vector2 = rect.get_center()
@@ -110,8 +116,8 @@ static func avatar(ci: CanvasItem, rect: Rect2, index: int, colors: Array[Color]
 	else:
 		gradient_rect(ci, rect, radius, fill.lightened(0.15), fill.darkened(0.25))
 	var s: float = size * 0.42
-	_emblem(ci, index % 6, center + Vector2(0, s * 0.06), s, Color(0, 0, 0, 0.28))
-	_emblem(ci, index % 6, center, s, ink)
+	_emblem(ci, emblem, center + Vector2(0, s * 0.06), s, Color(0, 0, 0, 0.28))
+	_emblem(ci, emblem, center, s, ink)
 
 
 static func _emblem(ci: CanvasItem, kind: int, center: Vector2, s: float,
