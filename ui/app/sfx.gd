@@ -97,64 +97,61 @@ static func _samples(sound_name: String) -> PackedFloat32Array:
 	return PackedFloat32Array()
 
 
-## Passar: duas batidas na mesa. Cada uma é um baque grave de madeira (tom que cai de
-## ~190 para ~110 Hz e some rápido), um corpo médio curto e o estalo do contato.
+## Passar: duas batidas na mesa de madeira oca. O som oco vem das ressonâncias médias
+## do tampo (230, 470, 820 e 1350 Hz), que somem em tempos diferentes, sem o grave
+## surdo; na frente, um clique curto e abafado do nó dos dedos.
 static func _knock() -> PackedFloat32Array:
-	var n: int = int(RATE * 0.32)
+	var n: int = int(RATE * 0.3)
 	var out: PackedFloat32Array = PackedFloat32Array()
 	out.resize(n)
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	rng.seed = 31
-	for hit: Array in [[0.0, 1.0], [0.13, 0.85]]:
+	# [frequência, queda em segundos, volume] de cada ressonância.
+	var modes: Array = [[230.0, 0.075, 1.0], [470.0, 0.045, 0.6], [820.0, 0.024, 0.32],
+		[1350.0, 0.012, 0.16]]
+	for hit: Array in [[0.0, 1.0], [0.115, 0.8]]:
 		var start: float = hit[0]
 		var gain: float = hit[1]
-		var phase: float = 0.0
-		var phase_body: float = 0.0
 		var low: float = 0.0
 		for i in n:
 			var t: float = float(i) / RATE - start
 			if t < 0.0:
 				continue
-			# Tom que cai: dá o "tum" da madeira.
-			var f: float = 110.0 + 80.0 * exp(-t / 0.012)
-			phase += TAU * f / RATE
-			phase_body += TAU * 520.0 / RATE
-			var v: float = sin(phase) * exp(-t / 0.045)
-			v += 0.35 * sin(phase_body) * exp(-t / 0.012)
-			# Estalo do nó dos dedos: ruído abafado nos primeiros milissegundos.
+			var v: float = 0.0
+			for mode: Array in modes:
+				# A primeira ressonância começa um pouco mais aguda, como no impacto real.
+				var f: float = mode[0] * (1.0 + 0.06 * exp(-t / 0.008))
+				v += mode[2] * sin(TAU * f * t) * exp(-t / mode[1])
 			var noise: float = rng.randf_range(-1.0, 1.0)
-			low += (noise - low) * 0.35
-			v += low * 0.9 * exp(-t / 0.004)
-			out[i] += v * gain * 0.75
+			low += (noise - low) * 0.3
+			v += low * 0.6 * exp(-t / 0.003)
+			out[i] += v * minf(t / 0.0007, 1.0) * gain * 0.5
 	return out
 
 
-## Desistir: as duas cartas empurradas pelo feltro (chiado que cresce e diminui) e o
-## leve tapa quando caem no monte.
+## Desistir: as duas cartas jogadas no monte. Um "fwip" curto de papel e, logo depois,
+## um tapinha leve e seco quando elas assentam.
 static func _fold() -> PackedFloat32Array:
-	var n: int = int(RATE * 0.36)
+	var n: int = int(RATE * 0.17)
 	var out: PackedFloat32Array = PackedFloat32Array()
 	out.resize(n)
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	rng.seed = 47
 	var low: float = 0.0
 	var band: float = 0.0
-	var slap_low: float = 0.0
 	for i in n:
 		var t: float = float(i) / RATE
 		var noise: float = rng.randf_range(-1.0, 1.0)
-		low += (noise - low) * 0.18
-		band += ((noise - low) - band) * 0.4
-		# Deslize: sobe em 80 ms, fica e some até os 230 ms, com leve tremor do feltro.
-		var slide: float = smoothstep(0.0, 0.08, t) * (1.0 - smoothstep(0.15, 0.23, t))
-		slide *= 0.75 + 0.25 * sin(TAU * 38.0 * t)
-		var v: float = band * slide * 0.55
-		# Tapa das cartas no monte, aos 220 ms.
-		var ts: float = t - 0.22
+		low += (noise - low) * 0.3              # corta os graves
+		band += ((noise - low) - band) * 0.5    # e o chiado mais agudo
+		# Fwip: sobe em 15 ms e some até os 70 ms.
+		var swish: float = smoothstep(0.0, 0.015, t) * (1.0 - smoothstep(0.03, 0.07, t))
+		var v: float = band * swish * 0.4
+		# Tapinha das cartas assentando, aos 75 ms.
+		var ts: float = t - 0.075
 		if ts >= 0.0:
-			slap_low += (noise - slap_low) * 0.25
-			v += slap_low * 1.6 * minf(ts / 0.002, 1.0) * exp(-ts / 0.022)
-			v += 0.25 * sin(TAU * 170.0 * ts) * exp(-ts / 0.03)
+			v += band * 0.9 * minf(ts / 0.001, 1.0) * exp(-ts / 0.009)
+			v += 0.08 * sin(TAU * 900.0 * ts) * exp(-ts / 0.006)
 		out[i] = v
 	return out
 
