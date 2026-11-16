@@ -2,6 +2,9 @@ extends "res://ui/screens/screen.gd"
 ## Criar mesa offline (SPEC 4.1): formato, lugares de 2 a 9 (você e os bots), nível dos
 ## bots, fichas, blinds ou tempo por nível, tempo por jogada e recompra. As escolhas
 ## ficam guardadas para a próxima vez.
+##
+## A mesma tela cria a sala do Wi-Fi (wifi verdadeiro): sem bots (o dono põe na sala de
+## espera) e com "Manter sala aberta" no clássico.
 
 signal start(choice: Dictionary)
 signal back
@@ -28,17 +31,20 @@ var _blinds: ChoiceRow = null
 var _minutes: ChoiceRow = null
 var _turn: ChoiceRow = null
 var _rebuys: ChoiceRow = null
+var _keep: ChoiceRow = null
+var _wifi: bool = false
 var _summary_big: Label = null
 var _summary: Label = null
 var _start: Button = null
 
 
-func _init(owner_profile: Profile) -> void:
+func _init(owner_profile: Profile, wifi: bool = false) -> void:
 	profile = owner_profile
+	_wifi = wifi
 
 
 func _build() -> void:
-	choice = OfflineOptions.clean(profile.offline)
+	choice = OfflineOptions.clean(profile.wifi if _wifi else profile.offline)
 	_back = Button.new()
 	_back.text = "‹"
 	_back.theme_type_variation = "QuietButton"
@@ -47,7 +53,7 @@ func _build() -> void:
 	add_child(_back)
 	_title = Label.new()
 	_title.theme_type_variation = "TitleLabel"
-	_title.text = "Mesa offline"
+	_title.text = "Criar sala" if _wifi else "Mesa offline"
 	add_child(_title)
 
 	_format = ChoiceRow.new("Formato", OfflineOptions.FORMAT_LABELS, choice["format"])
@@ -69,8 +75,12 @@ func _build() -> void:
 	_turn.changed.connect(_choose.bind("turn"))
 	_rebuys = ChoiceRow.new("Recompras", OfflineOptions.REBUY_LABELS, choice["rebuys"])
 	_rebuys.changed.connect(_choose.bind("rebuys"))
-	for row: Control in [_format, _seats, _bots, _turn, _stack, _blinds, _minutes, _rebuys]:
+	_keep = ChoiceRow.new("Manter sala aberta", OfflineOptions.KEEP_OPEN_LABELS,
+		choice["keep_open"])
+	_keep.changed.connect(_choose.bind("keep_open"))
+	for row: Control in [_format, _seats, _bots, _turn, _stack, _blinds, _minutes, _rebuys, _keep]:
 		add_child(row)
+	_bots.visible = not _wifi
 
 	_summary_big = Label.new()
 	_summary_big.theme_type_variation = "TitleLabel"
@@ -81,7 +91,7 @@ func _build() -> void:
 	_summary.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	add_child(_summary)
-	_start = action_button("Começar", true)
+	_start = action_button("Criar sala" if _wifi else "Começar", true)
 	_start.pressed.connect(_on_start)
 	add_child(_start)
 	_refresh()
@@ -100,6 +110,10 @@ func _layout() -> void:
 	var spare: float = b.end.y - top - ROW_H * 4.0
 	var step: float = ROW_H + clampf(spare / 3.0, 0.0, 14.0)
 	var left: Array[Control] = [_format, _seats, _bots, _turn]
+	if _wifi:
+		left = [_format, _seats, _turn]
+		if not OfflineOptions.is_tournament(choice):
+			left.append(_keep)
 	var right: Array[Control] = [_stack]
 	if OfflineOptions.is_tournament(choice):
 		right.append(_minutes)
@@ -131,8 +145,15 @@ func _refresh() -> void:
 	_blinds.visible = not tournament
 	_rebuys.visible = not tournament
 	_minutes.visible = tournament
+	_keep.visible = _wifi and not tournament
 	var bots: int = int(choice["seats"]) - 1
 	_summary_big.text = "%d lugares" % int(choice["seats"])
+	if _wifi:
+		_summary.text = "Você e até %d %s. Bots, se quiser, na sala de espera." % [
+			bots, "amigo" if bots == 1 else "amigos"]
+		if is_node_ready():
+			_layout()
+		return
 	var level: int = OfflineOptions.BOT_LEVELS[int(choice["bots"])]
 	var level_text: String = "de níveis variados" if level == 0 \
 		else PLURALS[level]
@@ -144,6 +165,11 @@ func _refresh() -> void:
 
 
 func _on_start() -> void:
+	if _wifi:
+		profile.wifi = choice.duplicate()
+		profile.save()
+		start.emit(choice.duplicate())
+		return
 	profile.offline = choice.duplicate()
 	profile.last_mode = Profile.MODE_OFFLINE
 	profile.save()

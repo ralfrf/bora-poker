@@ -336,6 +336,39 @@ func knows(id: String) -> bool:
 	return _record(id) != null
 
 
+## Verdadeiro se esse participante saiu e o prazo de volta já venceu: se voltar, é
+## jogador novo (SPEC 6.2).
+func is_expired(id: String) -> bool:
+	var seat: Seat = _record(id)
+	return seat != null and seat.expired
+
+
+## Torneio, mano a mano: o jogador entrega todas as fichas ao outro, que é o campeão
+## (SPEC 6.3, ausente há mais de 60 s). Só entre mãos.
+func concede(index: int) -> Dictionary:
+	if format != TOURNAMENT:
+		return _error("só no torneio")
+	if hand_in_progress():
+		return _error("espere a mão terminar")
+	var alive: Array[int] = participants()
+	if alive.size() != 2 or not alive.has(index):
+		return _error("só vale no mano a mano")
+	var loser: Seat = seat_at(index)
+	var winner: Seat = seat_at(alive[0] if alive[1] == index else alive[1])
+	var amount: int = loser.stack
+	winner.stack += amount
+	loser.stack = 0
+	loser.state = OUT
+	loser.place = 2
+	winner.place = 1
+	var events: Array[Dictionary] = [
+		{"type": "conceded", "seat": index, "to": winner.index, "amount": amount},
+		{"type": "eliminated", "seat": index, "place": 2},
+		{"type": "tournament_end", "winner": winner.index},
+	]
+	return {"ok": true, "error": "", "events": events}
+
+
 ## Verdadeiro se quem está fora da mesa (saiu ou virou espectador) ainda pode sentar de
 ## novo gastando uma recompra.
 func can_return_with_rebuy(id: String) -> bool:

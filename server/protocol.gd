@@ -17,25 +17,28 @@ const SIT: String = "sit"                   ## {seat} (seat é opcional)
 const AWAY: String = "away"                 ## {on}: verdadeiro = ausente, falso = "Voltei"
 const HISTORY: String = "history"           ## {}: pede o histórico das mãos
 const OWNER: String = "owner"               ## {cmd, ...} (só o dono)
-const PING: String = "ping"                 ## {}
+const PING: String = "ping"                 ## {}: batimento, a cada 2 s na rede
+const RETURN_CHOICE: String = "return_choice"   ## {keep}: volta com as fichas de antes ou as iniciais
+const PROFILE: String = "profile"           ## {avatar}: troca o avatar (só na sala de espera)
 # Reservadas para as próximas etapas.
 const REACT: String = "react"                   ## etapa 4: reação
-const RETURN_CHOICE: String = "return_choice"   ## etapa 4: escolha de fichas na volta
 const RESUME_ROOM: String = "resume_room"       ## etapa 5: devolver o resumo da sala
 
 # Do servidor para o app.
 const WELCOME: String = "welcome"   ## {v, nick}
 const ROOMS: String = "rooms"       ## {rooms: [{id, name, format, seats, players, phase, keep_open}]}
-const JOINED: String = "joined"     ## {room, you}
-const STATE: String = "state"       ## {room, table, you, events}: a sala e a mesa vistas por quem recebe
+const JOINED: String = "joined"     ## {room, you, resumed}: resumed = retomou o lugar de antes
+const STATE: String = "state"       ## {room, table, you, events}: a sala e a mesa vistas por quem recebe.
+                                    ## you.return_offer {before, initial, seat, can_initial}: oferta de volta (SPEC 6.2)
 const LEFT: String = "left"         ## {reason}: "left" ou "kicked"
 const CLOSED: String = "closed"     ## {reason, scoreboard, podium}
 const ERROR: String = "error"       ## {code, text}
 const PONG: String = "pong"         ## {}
 const HANDS: String = "hands"       ## {hands}: as últimas mãos, da mais recente (server/hand_log.gd)
+const MOVE: String = "move"         ## {ip, port, room, nick, snapshot?}: Wi-Fi, a sala passa para o celular de nick;
+                                    ## só ele recebe o snapshot (com os códigos dos aparelhos)
 # Reservadas para as próximas etapas.
 const REACTION: String = "reaction"           ## etapa 4
-const RETURN_OFFER: String = "return_offer"   ## etapa 4
 const SUMMARY: String = "summary"             ## etapa 5: resumo assinado
 
 # Comandos do dono (campo "cmd" de OWNER).

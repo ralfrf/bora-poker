@@ -24,13 +24,16 @@ const REBUY_LABELS: Array[String] = ["Não", "1", "2", "3", "Sem limite"]
 const BOT_LEVELS: Array[int] = [Roster.EASY, Roster.MEDIUM, Roster.HARD, 0]
 const BOT_LABELS: Array[String] = ["Fácil", "Médio", "Difícil", "Misto"]
 
+const KEEP_OPEN_LABELS: Array[String] = ["Não", "Sim"]
+
+## keep_open: só nas salas com amigos (Wi-Fi e à distância), no clássico.
 const DEFAULTS: Dictionary = {
 	"format": 0, "seats": DEFAULT_SEATS, "stack": 1, "blinds": 1, "t_stack": 1,
-	"minutes": 1, "turn": 1, "rebuys": 4, "bots": 1,
+	"minutes": 1, "turn": 1, "rebuys": 4, "bots": 1, "keep_open": 0,
 }
 const SIZES: Dictionary = {
 	"format": 2, "stack": 4, "blinds": 4, "t_stack": 3, "minutes": 4, "turn": 4,
-	"rebuys": 5, "bots": 4,
+	"rebuys": 5, "bots": 4, "keep_open": 2,
 }
 
 
@@ -70,6 +73,15 @@ static func build(choice: Dictionary) -> Dictionary:
 		options["small_blind"] = blinds[0]
 		options["big_blind"] = blinds[1]
 		options["rebuy_limit"] = REBUYS[int(choice["rebuys"])]
+	return options
+
+
+## Opções de create_room de uma sala com amigos: sem bots (o dono põe na sala de espera)
+## e com "manter sala aberta".
+static func build_room(choice: Dictionary) -> Dictionary:
+	var options: Dictionary = build(choice)
+	options["bots"] = []
+	options["keep_open"] = not is_tournament(choice) and int(choice["keep_open"]) == 1
 	return options
 
 

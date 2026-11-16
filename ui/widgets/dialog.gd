@@ -7,6 +7,9 @@ signal chosen(index: int)
 
 const T: String = "Tokens"
 
+## Falso: tocar fora não fecha (para perguntas que precisam de resposta).
+var dismissable: bool = true
+
 var _panel: PanelContainer = null
 var _title: Label = null
 var _text: Label = null
@@ -76,7 +79,8 @@ func _place() -> void:
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed \
 			and not _panel.get_rect().has_point(event.position):
-		_answer(1)
+		if dismissable:
+			_answer(1)
 		accept_event()
 
 

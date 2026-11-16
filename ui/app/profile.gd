@@ -17,8 +17,9 @@ const MODES: Array[String] = [MODE_OFFLINE, MODE_WIFI, MODE_ONLINE]
 
 var nick: String = ""
 var avatar: int = 0
-var last_mode: String = MODE_OFFLINE
+var last_mode: String = MODE_WIFI   ## SPEC 2: a primeira abertura mostra o Mesmo Wi-Fi
 var offline: Dictionary = {}
+var wifi: Dictionary = {}       ## escolhas da última sala criada no Wi-Fi
 var device: String = ""
 var sound: bool = true
 var vibration: bool = true
@@ -36,12 +37,14 @@ func load_file(path: String = PATH) -> void:
 			and (raw_nick as String).strip_edges() != "" else ""
 		var raw_avatar: Variant = file.get_value("perfil", "avatar", 0)
 		avatar = clampi(raw_avatar, 0, Room.AVATARS - 1) if typeof(raw_avatar) == TYPE_INT else 0
-		var raw_mode: Variant = file.get_value("perfil", "ultimo_modo", MODE_OFFLINE)
-		last_mode = raw_mode if MODES.has(raw_mode) else MODE_OFFLINE
+		var raw_mode: Variant = file.get_value("perfil", "ultimo_modo", MODE_WIFI)
+		last_mode = raw_mode if MODES.has(raw_mode) else MODE_WIFI
 		var raw_device: Variant = file.get_value("perfil", "aparelho", "")
 		device = raw_device if typeof(raw_device) == TYPE_STRING else ""
 		var raw_offline: Variant = file.get_value("offline", "escolhas", {})
 		offline = raw_offline if typeof(raw_offline) == TYPE_DICTIONARY else {}
+		var raw_wifi: Variant = file.get_value("wifi", "escolhas", {})
+		wifi = raw_wifi if typeof(raw_wifi) == TYPE_DICTIONARY else {}
 		sound = _flag(file.get_value("config", "sons", true), true)
 		vibration = _flag(file.get_value("config", "vibracao", true), true)
 	if device.length() < 16:
@@ -56,6 +59,7 @@ func save() -> bool:
 	file.set_value("perfil", "ultimo_modo", last_mode)
 	file.set_value("perfil", "aparelho", device)
 	file.set_value("offline", "escolhas", offline)
+	file.set_value("wifi", "escolhas", wifi)
 	file.set_value("config", "sons", sound)
 	file.set_value("config", "vibracao", vibration)
 	return file.save(_path) == OK

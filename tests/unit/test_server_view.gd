@@ -196,9 +196,14 @@ func test_kick_and_disconnect_through_server() -> void:
 	b.send({"t": Protocol.CREATE_ROOM, "options": {}})
 	_drain(server, [a, b, c], boxes)
 	assert_eq(server.rooms.size(), 2, "o expulso fica livre para outra sala")
+	var a_id: String = _last(boxes[0], Protocol.JOINED)["you"]
 	a.close()
 	_drain(server, [a, b, c], boxes)
-	assert_eq(room.owner_id, _last(boxes[2], Protocol.JOINED)["you"], "a queda do dono passa a sala")
+	assert_eq(room.owner_id, a_id, "o dono caiu: o lugar fica guardado por 60 s")
+	assert_true(room.members[a_id].offline_since >= 0, "marcado como desconectado")
+	(server.get("_clock") as Clock).advance(60000)
+	_drain(server, [a, b, c], boxes)
+	assert_eq(room.owner_id, _last(boxes[2], Protocol.JOINED)["you"], "depois de 60 s a sala passa")
 
 
 # ---------------------------------------------------------------- visão e sigilo

@@ -38,6 +38,7 @@ const DEFAULT_CONFIG: Dictionary = {
 	"bot_max_ms": 3000,
 	"rebuy_ms": 0,              # prazo da oferta de recompra; 0 = sem prazo (SPEC 3.4)
 	"held_ms": 600000,          # fichas guardadas de quem saiu (SPEC 6.2)
+	"offline_ms": 60000,        # lugar guardado de quem caiu (SPEC 6.2 e 6.3)
 	"allow_empty": false,       # sala sem humanos continua aberta (simulações)
 	"bot_evaluations": 0,       # teto de simulação do Difícil (0 = o padrão)
 	"bot_style": "",            # força um estilo para todos os bots (simulações)
@@ -49,6 +50,7 @@ class Member:
 
 	var id: String = ""
 	var nick: String = ""
+	var base_nick: String = ""     ## o apelido como chegou, sem o número de repetido
 	var avatar: int = 0
 	var device: String = ""        ## código secreto do aparelho; nunca sai do servidor
 	var is_bot: bool = false
@@ -58,7 +60,9 @@ class Member:
 	var view: Dictionary = {}      ## bot: a última mensagem "state" que recebeu
 	var seat: int = -1             ## -1 = espectador
 	var order: int = 0             ## ordem de chegada
-	var connected: bool = true
+	var connected: bool = true     ## falso depois que saiu de vez (ou o prazo da queda venceu)
+	var offline_since: int = -1    ## relógio real da queda ou da saída; -1 = conectado
+	var return_offer: bool = false ## voltou com fichas guardadas e ainda não escolheu
 	var away: bool = false
 	var timeouts: int = 0          ## estouros de tempo seguidos
 	var leaving: bool = false      ## saiu no meio de uma mão: deixa o lugar quando ela acabar
@@ -78,6 +82,7 @@ var owner_id: String = ""
 var members: Dictionary = {}       ## id -> Member, na ordem de chegada
 var final: Dictionary = {}         ## a mensagem "closed", depois que a sala encerra
 var bot_errors: int = 0            ## jogadas de bot recusadas; tem de ficar em zero
+var hold_hands: bool = false       ## não começa mão nova (Wi-Fi: a sala vai mudar de celular)
 var tap: Callable = Callable()     ## testes: vê tudo o que a sala entrega (id, mensagem)
 
 var _clock: Clock = null
@@ -98,6 +103,7 @@ var _hand_ids: Dictionary = {}     ## lugar -> id de quem recebeu cartas na mão
 var _names: Dictionary = {}        ## id -> apelido de todos os que já sentaram
 var _banned: Dictionary = {}       ## aparelhos expulsos
 var _held_until: Dictionary = {}   ## id -> fim do prazo das fichas guardadas (relógio real)
+var _held_by: Dictionary = {}      ## id -> {device, nick} de quem tem fichas guardadas
 var _pending_settings: Dictionary = {}
 var history: HandLog = HandLog.new()   ## as últimas mãos terminadas (SPEC 11.2)
 var _notes: Array = []             ## avisos da sala que vão na próxima mensagem "state"
@@ -183,21 +189,55 @@ func _init(room_id: String, room_options: Dictionary, clock: Clock, send: Callab
 
 
 ## Entra na sala. profile: {nick, avatar, device}. Senta se houver lugar e a sala
-## aceitar; senão fica assistindo. Devolve {ok, error, id}. Não avisa ninguém: quem
-## chamou manda o "joined" e depois chama announce().
+## aceitar; senão fica assistindo. Devolve {ok, error, id, resumed}. Não avisa ninguém:
+## quem chamou manda o "joined" e depois chama announce().
+##
+## Quem volta (SPEC 6.1 e 6.2) é reconhecido pelo apelido e pelo código do aparelho:
+## ainda na sala (caiu há pouco, ou torneio), retoma o mesmo participante (resumed);
+## com fichas guardadas, entra assistindo com a oferta de volta (you.return_offer).
 func join(profile: Dictionary, spectate: bool = false) -> Dictionary:
 	if phase == Protocol.ENDED:
-		return {"ok": false, "error": "a sala já foi encerrada", "id": ""}
+		return {"ok": false, "error": "a sala já foi encerrada", "id": "", "resumed": false}
 	var device: String = str(profile.get("device", ""))
 	if device != "" and _banned.has(device):
-		return {"ok": false, "error": "você foi expulso desta sala", "id": ""}
-	var member: Member = _new_member(str(profile.get("nick", "")), int(profile.get("avatar", 0)), false)
+		return {"ok": false, "error": "você foi expulso desta sala", "id": "", "resumed": false}
+	var base: String = clean_nick(str(profile.get("nick", "")))
+	var back: Member = _same_person(device, base)
+	if back != null:
+		back.connected = true
+		back.offline_since = -1
+		back.gone = false
+		back.leaving = false
+		back.forfeit = false
+		_notes.append({"type": "online", "seat": back.seat})
+		_check_owner()
+		return {"ok": true, "error": "", "id": back.id, "resumed": true}
+	var held_id: String = _held_id(device, base)
+	var member: Member = _new_member(base, int(profile.get("avatar", 0)), false, held_id)
 	member.device = device
-	if not spectate:
+	member.base_nick = base
+	if held_id != "":
+		member.return_offer = true
+	elif not spectate:
 		_try_sit(member, -1)
 	if owner_id == "":
 		_set_owner(member)
-	return {"ok": true, "error": "", "id": member.id}
+	return {"ok": true, "error": "", "id": member.id, "resumed": false}
+
+
+## A conexão caiu (SPEC 6.2 e 6.3). Quem está sentado tem o lugar guardado por
+## offline_ms, com o relógio da vez correndo normalmente; quem só assistia sai.
+func drop_connection(member_id: String) -> void:
+	var member: Member = members.get(member_id)
+	if member == null or member.is_bot or phase == Protocol.ENDED or not member.connected:
+		return
+	if member.seat < 0:
+		leave(member_id)
+		return
+	if member.offline_since < 0:
+		member.offline_since = _clock.now_ms()
+		_notes.append({"type": "offline", "seat": member.seat})
+		_broadcast([])
 
 
 ## Manda a todos a situação atual da sala.
@@ -237,6 +277,10 @@ func handle(member_id: String, message: Dictionary) -> void:
 			problem = _sit(member, message)
 		Protocol.AWAY:
 			problem = _set_away(member, message)
+		Protocol.RETURN_CHOICE:
+			problem = _return_choice(member, message)
+		Protocol.PROFILE:
+			problem = _change_profile(member, message)
 		Protocol.OWNER:
 			problem = _owner_command(member, message)
 		_:
@@ -249,6 +293,9 @@ func handle(member_id: String, message: Dictionary) -> void:
 
 ## Faz o tempo da sala andar: estouros de tempo, prazos, bots e a mão seguinte.
 func tick() -> void:
+	if phase == Protocol.ENDED:
+		return
+	_expire_offline()
 	if phase == Protocol.ENDED:
 		return
 	_expire_held()
@@ -318,6 +365,110 @@ func close(reason: String) -> void:
 
 func is_closed() -> bool:
 	return phase == Protocol.ENDED
+
+
+## Passa a sala para esse participante (humano e presente). Devolve verdadeiro se deu.
+func make_owner(member_id: String) -> bool:
+	var member: Member = members.get(member_id)
+	if member == null or member.is_bot or not _present(member):
+		return false
+	_set_owner(member)
+	return true
+
+
+## Retrato da sala para outro celular continuar com ela (Wi-Fi: o anfitrião saiu). Só
+## entre mãos ({} durante uma mão). Os prazos vão como tempo que falta, porque cada aparelho tem o seu
+## relógio. Leva o código secreto dos aparelhos: só pode ir para quem vira o servidor.
+## O histórico das mãos não vai (como na recuperação da etapa 5).
+func snapshot() -> Dictionary:
+	if table.hand_in_progress():
+		return {}
+	var now: int = _clock.now_ms()
+	# A última mão fica de fora: tem cartas que ninguém mostrou e o resto do baralho.
+	var saved_table: Dictionary = table.to_dict()
+	saved_table["hand"] = null
+	var list: Array = []
+	for member: Member in members.values():
+		list.append({
+			"id": member.id, "nick": member.nick, "base_nick": member.base_nick,
+			"avatar": member.avatar, "device": member.device, "bot": member.is_bot,
+			"level": member.level, "style": member.style, "seat": member.seat,
+			"order": member.order, "away": member.away, "timeouts": member.timeouts,
+			"gone": member.gone, "connected": member.connected,
+			"offline_ms": now - member.offline_since if member.offline_since >= 0 else -1,
+			"rebuy_offer": member.rebuy_offer,
+			"rebuy_ms": member.rebuy_deadline - _now() if member.rebuy_deadline >= 0 else -1,
+			"return_offer": member.return_offer,
+		})
+	var held: Dictionary = {}
+	for member_id: String in _held_until:
+		held[member_id] = maxi(0, int(_held_until[member_id]) - now)
+	return {
+		"v": 1, "id": id, "name": name, "phase": phase, "owner": owner_id,
+		"options": options.duplicate(true), "table": saved_table, "members": list,
+		"next_member": _next_member, "seq": _seq,
+		"play_ms": _now() - _play_started if phase == Protocol.PLAYING else 0,
+		"next_hand_ms": maxi(0, _next_hand_at - _now()),
+		"names": _names.duplicate(), "banned": _banned.keys(), "held": held,
+		"held_by": _held_by.duplicate(true), "pending": _pending_settings.duplicate(),
+	}
+
+
+## Continua a sala a partir do retrato (numa sala recém-criada com as mesmas opções e
+## sem bots). Quem estava conectado ganha os 60 s de queda para reconectar aqui.
+## Devolve "" ou o motivo da recusa.
+func restore(saved: Dictionary) -> String:
+	if int(saved.get("v", 0)) != 1 or not table.load_dict(saved.get("table", {})):
+		return "retrato da sala inválido"
+	var now: int = _clock.now_ms()
+	members.clear()
+	name = str(saved.get("name", ""))
+	phase = str(saved.get("phase", Protocol.LOBBY))
+	owner_id = str(saved.get("owner", ""))
+	_next_member = int(saved.get("next_member", 1))
+	_seq = int(saved.get("seq", 0))
+	for raw: Dictionary in saved.get("members", []):
+		var member: Member = Member.new()
+		member.id = str(raw["id"])
+		member.nick = str(raw["nick"])
+		member.base_nick = str(raw.get("base_nick", member.nick))
+		member.avatar = clampi(int(raw.get("avatar", 0)), 0, AVATARS - 1)
+		member.device = str(raw.get("device", ""))
+		member.is_bot = bool(raw.get("bot", false))
+		member.level = int(raw.get("level", 0))
+		member.style = str(raw.get("style", ""))
+		member.seat = int(raw.get("seat", -1))
+		member.order = int(raw.get("order", 0))
+		member.away = bool(raw.get("away", false))
+		member.timeouts = int(raw.get("timeouts", 0))
+		member.gone = bool(raw.get("gone", false))
+		member.connected = bool(raw.get("connected", true))
+		member.rebuy_offer = bool(raw.get("rebuy_offer", false))
+		var rebuy_ms: int = int(raw.get("rebuy_ms", -1))
+		member.rebuy_deadline = _now() + rebuy_ms if rebuy_ms >= 0 else -1
+		member.return_offer = bool(raw.get("return_offer", false))
+		if member.is_bot:
+			member.bot = Bot.new(member.level, member.style, _rng.randi(),
+				int(_config["bot_evaluations"]))
+		elif member.connected:
+			member.offline_since = now
+		else:
+			member.offline_since = now - maxi(0, int(raw.get("offline_ms", 0)))
+		members[member.id] = member
+	_names = saved.get("names", {}).duplicate()
+	_banned.clear()
+	for device: Variant in saved.get("banned", []):
+		_banned[str(device)] = true
+	_held_until.clear()
+	var held: Dictionary = saved.get("held", {})
+	for member_id: String in held:
+		_held_until[member_id] = now + int(held[member_id])
+	_held_by = saved.get("held_by", {}).duplicate(true)
+	_pending_settings = saved.get("pending", {}).duplicate()
+	_play_started = _now() - int(saved.get("play_ms", 0))
+	_next_hand_at = _now() + int(saved.get("next_hand_ms", 0))
+	_hand_ids.clear()
+	return ""
 
 
 func member_at(seat: int) -> Member:
@@ -403,10 +554,50 @@ func _sit(member: Member, message: Dictionary) -> String:
 	var wanted: Variant = message.get("seat", -1)
 	if typeof(wanted) != TYPE_INT:
 		return "lugar inválido"
+	if member.return_offer:
+		return "escolha com quais fichas voltar"
 	var problem: String = _try_sit(member, wanted)
 	if problem == "":
 		_broadcast([])
 	return problem
+
+
+## Troca de avatar, só na sala de espera.
+func _change_profile(member: Member, message: Dictionary) -> String:
+	var avatar: Variant = message.get("avatar")
+	if typeof(avatar) != TYPE_INT or avatar < 0 or avatar >= AVATARS:
+		return "avatar inválido"
+	if phase != Protocol.LOBBY:
+		return "o avatar só muda antes de a partida começar"
+	member.avatar = avatar
+	_broadcast([])
+	return ""
+
+
+## Volta com fichas guardadas (SPEC 6.2): keep verdadeiro = as fichas de antes; falso =
+## as iniciais (recompra, se for mais do que ele tinha).
+func _return_choice(member: Member, message: Dictionary) -> String:
+	var keep: Variant = message.get("keep")
+	if typeof(keep) != TYPE_BOOL:
+		return "resposta malformada"
+	if not member.return_offer:
+		return "você não tem fichas guardadas"
+	var seat: int = _free_seat()
+	if seat < 0:
+		return "não há lugar livre"
+	var problem: String = table.add_player(seat, member.id, keep)
+	if problem != "":
+		return problem
+	member.seat = seat
+	member.return_offer = false
+	member.away = false
+	member.timeouts = 0
+	_held_until.erase(member.id)
+	_held_by.erase(member.id)
+	_names[member.id] = member.nick
+	_notes.append({"type": "returned", "seat": seat, "keep": keep})
+	_broadcast([])
+	return ""
 
 
 func _set_away(member: Member, message: Dictionary) -> String:
@@ -538,8 +729,10 @@ func _step() -> bool:
 		return true
 	if table.hand_in_progress():
 		return _step_turn(now)
-	if now < _next_hand_at:
+	if now < _next_hand_at or hold_hands:
 		return false
+	if _walkover():
+		return true
 	if _check_over():
 		return true
 	if not table.can_start_hand():
@@ -680,6 +873,39 @@ func _check_over() -> bool:
 	return true
 
 
+## Torneio, mano a mano com um ausente há mais de offline_ms: ele entrega as fichas e o
+## outro é o campeão (SPEC 6.3).
+func _walkover() -> bool:
+	if table.format != Table.TOURNAMENT or table.hand_number == 0:
+		return false
+	var alive: Array[int] = table.participants()
+	if alive.size() != 2:
+		return false
+	var limit: int = int(_config["offline_ms"])
+	for seat: int in alive:
+		var member: Member = member_at(seat)
+		if (member != null and member.gone and member.offline_since >= 0
+				and _clock.now_ms() - member.offline_since >= limit):
+			var response: Dictionary = table.concede(seat)
+			if response["ok"]:
+				_broadcast(response["events"])
+				return true
+	return false
+
+
+## Quem caiu e não voltou em offline_ms perde o lugar guardado: sai como quem toca em
+## "Sair" (desiste da mão, se estiver nela). As fichas ficam guardadas desde a queda.
+func _expire_offline() -> void:
+	var limit: int = int(_config["offline_ms"])
+	var now: int = _clock.now_ms()
+	for member: Member in members.values():
+		if member.connected and member.offline_since >= 0 and now - member.offline_since >= limit:
+			_drop_member(member, false)
+			if phase == Protocol.ENDED:
+				return
+			_broadcast([])
+
+
 func _expire_rebuys(now: int) -> bool:
 	for member: Member in members.values():
 		if member.rebuy_offer and member.rebuy_deadline >= 0 and now >= member.rebuy_deadline:
@@ -698,14 +924,44 @@ func _expire_held() -> void:
 		if now >= int(_held_until[member_id]):
 			table.expire_held(member_id)
 			_held_until.erase(member_id)
+			_held_by.erase(member_id)
+			var waiting: Member = members.get(member_id)
+			if waiting != null and waiting.return_offer:
+				waiting.return_offer = false
+				_broadcast([])
+
+
+## Participante ainda na sala com esse apelido e aparelho (quem caiu, ou saiu no meio de
+## uma mão ou do torneio).
+func _same_person(device: String, base: String) -> Member:
+	if device == "":
+		return null
+	for member: Member in members.values():
+		if not member.is_bot and member.device == device and member.base_nick == base:
+			return member
+	return null
+
+
+## Quem saiu e ainda tem fichas guardadas, com esse apelido e aparelho: o id antigo.
+func _held_id(device: String, base: String) -> String:
+	if device == "":
+		return ""
+	var now: int = _clock.now_ms()
+	for member_id: String in _held_by.keys():
+		var who: Dictionary = _held_by[member_id]
+		if (who["device"] == device and who["nick"] == base and not members.has(member_id)
+				and now < int(_held_until.get(member_id, 0))):
+			return member_id
+	return ""
 
 
 # ---------------------------------------------------------------- pessoas
 
 
-func _new_member(nick: String, avatar: int, is_bot: bool) -> Member:
+## known_id: o id antigo de quem volta com fichas guardadas.
+func _new_member(nick: String, avatar: int, is_bot: bool, known_id: String = "") -> Member:
 	var member: Member = Member.new()
-	member.id = ("b%d" if is_bot else "p%d") % _next_member
+	member.id = known_id if known_id != "" else ("b%d" if is_bot else "p%d") % _next_member
 	member.order = _next_member
 	_next_member += 1
 	member.is_bot = is_bot
@@ -752,8 +1008,10 @@ func _try_sit(member: Member, wanted: int) -> String:
 	if phase == Protocol.PLAYING:
 		if table.format == Table.TOURNAMENT:
 			return "o torneio já começou"
-		# Quem já jogou nesta mesa volta gastando recompra; gente nova, só em sala aberta.
-		if not table.knows(member.id) and not options["keep_open"]:
+		# Quem já jogou nesta mesa volta gastando recompra; gente nova (ou quem perdeu o
+		# prazo de volta), só em sala aberta.
+		var known: bool = table.knows(member.id) and not table.is_expired(member.id)
+		if not known and not options["keep_open"]:
 			return "a sala não aceita novos jogadores"
 	var seat: int = wanted if wanted >= 0 else _free_seat()
 	if seat < 0 or seat >= int(options["seats"]):
@@ -798,6 +1056,8 @@ func _to_spectator(member: Member) -> void:
 func _drop_member(member: Member, forfeit: bool) -> void:
 	member.connected = false
 	member.forfeit = forfeit
+	if member.offline_since < 0:
+		member.offline_since = _clock.now_ms()
 	if member.seat < 0:
 		members.erase(member.id)
 	elif table.format == Table.TOURNAMENT and table.hand_number > 0:
@@ -820,7 +1080,10 @@ func _leave_table(member: Member) -> void:
 			if member.forfeit:
 				table.expire_held(member.id)
 			else:
-				_held_until[member.id] = _clock.now_ms() + int(_config["held_ms"])
+				# Os 10 minutos contam desde a queda (SPEC 6.2).
+				var since: int = member.offline_since if member.offline_since >= 0 else _clock.now_ms()
+				_held_until[member.id] = since + int(_config["held_ms"])
+				_held_by[member.id] = {"device": member.device, "nick": member.base_nick}
 	member.seat = -1
 	member.rebuy_offer = false
 	member.rebuy_deadline = -1
@@ -861,6 +1124,13 @@ func _state_for(member: Member, info: Dictionary, table_view: Dictionary, events
 	var you: Dictionary = View.own(table, member.seat, member.id, _hand_ids)
 	you["id"] = member.id
 	you["seat"] = member.seat
+	# return_offer: voltou com fichas guardadas; escolhe as de antes ou as iniciais.
+	if member.return_offer:
+		var held: int = table.cashbox.held(member.id)
+		you["return_offer"] = {
+			"before": held, "initial": table.starting_stack, "seat": _free_seat() >= 0,
+			"can_initial": table.starting_stack <= held or table.can_return_with_rebuy(member.id),
+		}
 	# rebuy_ms: o que falta do prazo da oferta, ou -1 quando não há prazo.
 	if member.rebuy_offer:
 		you["rebuy_ms"] = maxi(0, member.rebuy_deadline - _now()) if member.rebuy_deadline >= 0 else -1
@@ -886,7 +1156,8 @@ func _room_info() -> Dictionary:
 			"id": member.id, "nick": member.nick, "avatar": member.avatar,
 			"bot": member.is_bot, "level": member.level, "style": member.style,
 			"seat": member.seat, "away": member.away or member.gone or member.leaving,
-			"connected": member.connected, "rebuys": table.rebuys_of(member.id),
+			"connected": member.connected and member.offline_since < 0,
+			"rebuys": table.rebuys_of(member.id),
 		})
 	return {
 		"id": id, "name": name, "phase": phase, "paused": paused, "owner": owner_id,
@@ -901,7 +1172,7 @@ func _send_to(member: Member, message: Dictionary) -> void:
 		if message["t"] == Protocol.STATE:
 			member.view = message
 			member.bot.observe(message)
-	elif member.connected and _send.is_valid():
+	elif member.connected and member.offline_since < 0 and _send.is_valid():
 		_send.call(member.id, message)
 
 

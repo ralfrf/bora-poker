@@ -79,6 +79,44 @@ func tick() -> void:
 			rooms.erase(room_id)
 
 
+## Continua uma sala a partir do retrato de outro servidor (Wi-Fi: o anfitrião saiu e
+## este celular assumiu). Devolve "" ou o motivo da recusa.
+func restore_room(saved: Dictionary) -> String:
+	var room_id: String = str(saved.get("id", ""))
+	if room_id == "" or rooms.has(room_id) or rooms.size() >= _max_rooms:
+		return "não dá para continuar a sala aqui"
+	var raw: Dictionary = saved.get("options", {}).duplicate(true)
+	raw["bots"] = []
+	var checked: Dictionary = Room.normalize_options(raw)
+	if not checked["ok"]:
+		return checked["error"]
+	var room: Room = Room.new(room_id, checked["options"], _clock, _deliver.bind(room_id),
+		_room_config, _seed_source)
+	var problem: String = room.restore(saved)
+	if problem != "":
+		return problem
+	room.options["bots"] = saved["options"].get("bots", [])
+	rooms[room_id] = room
+	return ""
+
+
+## Manda uma mensagem a um participante, se ele estiver conectado. Devolve se mandou.
+func send_to_member(room_id: String, member_id: String, message: Dictionary) -> bool:
+	var key: String = _key(room_id, member_id)
+	if not _routes.has(key):
+		return false
+	_transport.call("send", _routes[key], message)
+	return true
+
+
+## O IP da conexão de um participante ("" se não estiver conectado pela rede).
+func member_ip(room_id: String, member_id: String) -> String:
+	var key: String = _key(room_id, member_id)
+	if not _routes.has(key) or not _transport.has_method("peer_ip"):
+		return ""
+	return str(_transport.call("peer_ip", _routes[key]))
+
+
 func _message(session: Session, data: Dictionary) -> void:
 	var type: Variant = data.get("t")
 	if typeof(type) != TYPE_STRING:
@@ -181,8 +219,19 @@ func _enter(session: Session, room: Room, spectate: bool) -> void:
 		return
 	session.room_id = room.id
 	session.member_id = result["id"]
-	_routes[_key(room.id, session.member_id)] = session.peer
-	_reply(session, {"t": Protocol.JOINED, "room": room.id, "you": session.member_id})
+	var key: String = _key(room.id, session.member_id)
+	var old_peer: int = int(_routes.get(key, -1))
+	if old_peer >= 0 and old_peer != session.peer:
+		# O mesmo jogador chegou por uma conexão nova antes de a antiga cair: a antiga
+		# deixa de responder por ele e é encerrada.
+		var old: Session = _sessions.get(old_peer)
+		if old != null:
+			old.room_id = ""
+			old.member_id = ""
+		_transport.call("drop", old_peer)
+	_routes[key] = session.peer
+	_reply(session, {"t": Protocol.JOINED, "room": room.id, "you": session.member_id,
+		"resumed": result.get("resumed", false)})
 	room.announce()
 
 
@@ -199,8 +248,7 @@ func _leave(session: Session) -> void:
 	_reply(session, {"t": Protocol.LEFT, "reason": Protocol.R_LEFT})
 
 
-## A conexão caiu. Por ora vale como sair da sala; a espera de 60 s e a volta são da
-## etapa 4 (SPEC 6).
+## A conexão caiu: a sala guarda o lugar por 60 s e reconhece a volta (SPEC 6).
 func _disconnected(peer: int) -> void:
 	var session: Session = _sessions.get(peer)
 	if session == null:
@@ -208,8 +256,10 @@ func _disconnected(peer: int) -> void:
 	_sessions.erase(peer)
 	var room: Room = rooms.get(session.room_id)
 	if room != null:
-		_routes.erase(_key(room.id, session.member_id))
-		room.leave(session.member_id)
+		var key: String = _key(room.id, session.member_id)
+		if int(_routes.get(key, -1)) == peer:
+			_routes.erase(key)
+		room.drop_connection(session.member_id)
 
 
 ## A saída das salas: entrega a mensagem à conexão do participante.
@@ -240,7 +290,8 @@ func _key(room_id: String, member_id: String) -> String:
 	return room_id + "/" + member_id
 
 
-## Código curto da sala, fácil de ditar (a entrada por código é da etapa 4).
+## Código curto da sala, fácil de ditar. No Wi-Fi quem digita usa o código do IP
+## (net/room_code.gd); este identifica a sala dentro do servidor.
 func _new_code() -> String:
 	while true:
 		var code: String = ""

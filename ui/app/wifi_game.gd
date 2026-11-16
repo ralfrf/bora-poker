@@ -1,0 +1,425 @@
+extends "res://ui/app/game_session.gd"
+## Partida no Mesmo Wi-Fi (SPEC 9.2).
+##
+## Anfitrião: o servidor de mesa roda neste celular. Ele joga pelo transporte local e os
+## convidados chegam por WebSocket; os dois entram no servidor por um mux. A sala é
+## anunciada por broadcast UDP.
+##
+## Convidado: conecta por WebSocket no celular do anfitrião, apresenta-se, pede a lista
+## (há uma sala só) e entra. Se a conexão cai, tenta de novo por até 2 minutos e volta
+## para o mesmo lugar (SPEC 6.2 e 6.4).
+##
+## Anfitrião sai pelo botão (SPEC 6.4): se há outro humano conectado, a sala passa para
+## o celular dele. Espera a mão em andamento acabar (o anfitrião desiste dela), manda o
+## retrato da sala só para o herdeiro e o novo endereço para todos; o herdeiro abre o
+## servidor com a sala e os outros reconectam nele.
+
+const Server := preload("res://server/server.gd")
+const Clock := preload("res://server/clock.gd")
+const LocalTransport := preload("res://net/local_transport.gd")
+const WsServer := preload("res://net/ws_server.gd")
+const WsClient := preload("res://net/ws_client.gd")
+const Mux := preload("res://net/mux.gd")
+const Discovery := preload("res://net/discovery.gd")
+const RoomCode := preload("res://net/room_code.gd")
+
+enum Link { CONNECTING, ONLINE, RECONNECTING, FAILED }
+
+const RETRY_MS: int = 2000
+const RECONNECT_MS: int = 120000   ## 2 minutos (SPEC 6.4)
+const HOST_NOTICE_MS: int = 6000
+
+var is_host: bool = false
+var link: Link = Link.CONNECTING
+## Por que não deu (texto em português, já para a tela).
+var error_text: String = ""
+## Saiu da sala por pedido próprio ou expulso ("left" ou "kicked").
+var left_reason: String = ""
+## O código da sala e o IP do anfitrião na rede.
+var code: String = ""
+var host_ip: String = ""
+var port: int = WsServer.PORT
+## Para quem a sala passou (apelido), quando o anfitrião sai.
+var heir_nick: String = ""
+## Ajustes de quando este celular assume a sala (os testes mudam):
+## listen_port, announce_to, announce_port, room_config, seed_source.
+var takeover: Dictionary = {}
+
+var _clock: Clock = null
+var _profile: Dictionary = {}
+# Anfitrião
+var _server: Server = null
+var _ws_server: WsServer = null
+var _announcer: Discovery.Announcer = null
+var _exiting: bool = false       ## saiu e espera a mão acabar para passar a sala
+var _exited: bool = false        ## a sala já passou (ou fechou)
+var _host_since: int = -1        ## quando este celular assumiu a sala de outro
+# Convidado
+var _ws: WsClient = null
+var _joined_once: bool = false
+var _joining: bool = false
+var _lost_at: int = -1
+var _retry_at: int = 0
+var _moving_to: String = ""      ## a sala está passando para o celular deste apelido
+
+
+func _init(clock: Clock = null) -> void:
+	_clock = clock if clock != null else Clock.new()
+
+
+## Abre a sala neste celular. Devolve falso (com error_text) se não deu.
+## room_config e seed_source: só nos testes. announce_to: para onde mandar os anúncios
+## (testes); vazio = broadcast da rede. listen_port 0 = porta livre qualquer (testes).
+func host(nick: String, avatar: int, device: String, options: Dictionary,
+		room_config: Dictionary = {}, seed_source: Callable = Callable(),
+		announce_to: Array[String] = [], listen_port: int = WsServer.PORT,
+		announce_port: int = Discovery.PORT) -> bool:
+	_profile = {"nick": nick, "avatar": avatar, "device": device}
+	var ip: String = RoomCode.local_ip()
+	if ip == "" and announce_to.is_empty():
+		_fail("Conecte o celular a uma rede Wi-Fi ou ligue o ponto de acesso.")
+		return false
+	if not _open_server(ip, listen_port, announce_to, announce_port, room_config, seed_source):
+		return false
+	_hello()
+	send({"t": Protocol.CREATE_ROOM, "options": options})
+	return true
+
+
+## Entra na sala de outro celular.
+func join(ip: String, room_port: int, nick: String, avatar: int, device: String) -> void:
+	is_host = false
+	host_ip = ip
+	port = room_port
+	_profile = {"nick": nick, "avatar": avatar, "device": device}
+	_ws = WsClient.new(_clock)
+	_client = _ws
+	_ws.open(ip, room_port)
+	link = Link.CONNECTING
+
+
+## Servidor, transportes e anúncios deste celular, que passa a ser o anfitrião.
+func _open_server(ip: String, listen_port: int, announce_to: Array[String],
+		announce_port: int, room_config: Dictionary, seed_source: Callable) -> bool:
+	is_host = true
+	_ws_server = WsServer.new(_clock)
+	if _ws_server.listen(listen_port) != OK:
+		_ws_server = null
+		_fail("Não foi possível abrir a sala neste celular. Feche e abra o app.")
+		return false
+	host_ip = ip
+	port = _ws_server.port
+	code = RoomCode.encode(ip)
+	var local: LocalTransport = LocalTransport.new()
+	var mux: Mux = Mux.new()
+	mux.add(local)
+	mux.add(_ws_server)
+	_server = Server.new(mux, _clock, {"max_rooms": 1, "room": room_config}, seed_source)
+	_client = local.connect_client()
+	_announcer = Discovery.Announcer.new(_clock, announce_to, announce_port)
+	link = Link.ONLINE
+	return true
+
+
+func _pump() -> void:
+	if is_host:
+		_pump_host()
+	elif _ws != null:
+		_pump_guest()
+
+
+func _pump_host() -> void:
+	if _server == null:
+		return
+	_server.tick()
+	var room: Object = _server.rooms.get(room_id)
+	if _exiting:
+		if not _exited:
+			if room == null or room.call("is_closed"):
+				_exited = true
+			elif not room.get("table").call("hand_in_progress"):
+				_hand_over(room)
+		return
+	if _announcer != null and room != null and not room.call("is_closed"):
+		_announcer.poll(_announcement(room))
+
+
+func _pump_guest() -> void:
+	var now: int = _clock.now_ms()
+	match _ws.status:
+		WsClient.Status.OPEN:
+			if link != Link.ONLINE and link != Link.FAILED:
+				# Conectou (ou reconectou): apresenta-se e pede a sala.
+				link = Link.ONLINE
+				_lost_at = -1
+				_hello()
+				send({"t": Protocol.LIST_ROOMS})
+		WsClient.Status.LOST:
+			if link == Link.FAILED:
+				return
+			if not _joined_once:
+				_fail("Não foi possível entrar na sala. Confira se os dois celulares estão na mesma rede.")
+				return
+			if _lost_at < 0:
+				_lost_at = now
+				_retry_at = now + RETRY_MS
+				link = Link.RECONNECTING
+			if now - _lost_at > RECONNECT_MS:
+				_fail("O anfitrião não voltou.")
+			elif now >= _retry_at:
+				_retry_at = now + RETRY_MS
+				_ws.open(host_ip, port)
+		WsClient.Status.CONNECTING:
+			if _lost_at >= 0:
+				link = Link.RECONNECTING
+
+
+func _track(message: Dictionary) -> void:
+	super(message)
+	match message.get("t"):
+		Protocol.ROOMS:
+			if not is_host:
+				_pick_room(message.get("rooms", []))
+		Protocol.JOINED:
+			_joined_once = true
+			_joining = false
+			_moving_to = ""
+		Protocol.LEFT:
+			left_reason = str(message.get("reason", Protocol.R_LEFT))
+		Protocol.MOVE:
+			if not is_host:
+				_on_move(message)
+		Protocol.ERROR:
+			var code_name: String = str(message.get("code", ""))
+			var text: String = str(message.get("text", ""))
+			if code_name == Protocol.E_VERSION:
+				_fail("A versão do app do anfitrião é diferente. Atualizem o app nos dois celulares.")
+			elif _joining:
+				_fail(text.left(1).to_upper() + text.substr(1) + ".")
+
+
+## Convidado: entra na sala de antes (reconexão) ou na única que houver.
+func _pick_room(rooms: Array) -> void:
+	if rooms.is_empty():
+		_fail("A sala foi encerrada.")
+		return
+	var target: String = str(rooms[0].get("id", ""))
+	for room: Dictionary in rooms:
+		if str(room.get("id", "")) == room_id and room_id != "":
+			target = room_id
+	if room_id != "" and target != room_id:
+		_fail("A sala foi encerrada.")
+		return
+	_joining = true
+	send({"t": Protocol.JOIN_ROOM, "room": target, "spectate": false})
+
+
+# ---------------------------------------------------------------- a sala muda de celular
+
+
+## Humano conectado pela rede, o mais antigo, que pode herdar a sala ("" se ninguém).
+func _heir_of(room: Object) -> String:
+	var best: Object = null
+	for member: Object in (room.get("members") as Dictionary).values():
+		if member.get("is_bot") or member.get("id") == my_id or not member.get("connected") \
+				or int(member.get("offline_since")) >= 0:
+			continue
+		if _server.member_ip(room_id, member.get("id")) == "":
+			continue
+		if best == null or int(member.get("order")) < int(best.get("order")):
+			best = member
+	return str(best.get("id")) if best != null else ""
+
+
+## O anfitrião já saiu e a mão acabou: manda o retrato ao herdeiro e o novo endereço a
+## todos. Sem herdeiro, a sala fecha com placar.
+func _hand_over(room: Object) -> void:
+	_exited = true
+	var heir: String = str(room.get("owner_id"))
+	if _server.member_ip(room_id, heir) == "":
+		heir = _heir_of(room)
+	if heir == "" or not room.call("make_owner", heir):
+		room.call("close", Protocol.R_OWNER)
+		return
+	var saved: Dictionary = room.call("snapshot")
+	var ip: String = _server.member_ip(room_id, heir)
+	heir_nick = str((room.get("members") as Dictionary)[heir].get("nick"))
+	for member: Object in (room.get("members") as Dictionary).values():
+		if member.get("is_bot"):
+			continue
+		var message: Dictionary = {"t": Protocol.MOVE, "ip": ip, "port": WsServer.PORT,
+			"room": room_id, "nick": heir_nick}
+		if member.get("id") == heir:
+			message["snapshot"] = saved
+		_server.send_to_member(room_id, str(member.get("id")), message)
+	if _announcer != null:
+		_announcer.close()
+		_announcer = null
+
+
+## Convidado: a sala mudou de celular. O herdeiro assume; os outros reconectam nele.
+func _on_move(message: Dictionary) -> void:
+	_moving_to = str(message.get("nick", ""))
+	var ip: String = str(message.get("ip", ""))
+	var new_port: int = int(message.get("port", WsServer.PORT))
+	if typeof(message.get("snapshot")) == TYPE_DICTIONARY:
+		_take_over(message["snapshot"], ip)
+		return
+	host_ip = ip
+	port = new_port
+	_ws.close()
+	_ws = WsClient.new(_clock)
+	_client = _ws
+	var now: int = _clock.now_ms()
+	_lost_at = now
+	_retry_at = now + RETRY_MS
+	link = Link.RECONNECTING
+	_ws.open(ip, new_port)
+
+
+func _take_over(saved: Dictionary, ip: String) -> void:
+	if _ws != null:
+		_ws.close()
+		_ws = null
+	var announce_to: Array[String] = []
+	announce_to.assign(takeover.get("announce_to", []))
+	if not _open_server(ip, int(takeover.get("listen_port", WsServer.PORT)), announce_to,
+			int(takeover.get("announce_port", Discovery.PORT)),
+			takeover.get("room_config", {}), takeover.get("seed_source", Callable())):
+		return
+	if _server.restore_room(saved) != "":
+		_fail("Não deu para continuar a sala neste celular.")
+		return
+	_host_since = _clock.now_ms()
+	_moving_to = ""
+	_hello()
+	_joining = true
+	send({"t": Protocol.JOIN_ROOM, "room": room_id, "spectate": false})
+
+
+# ---------------------------------------------------------------- apoio
+
+
+func _hello() -> void:
+	send({"t": Protocol.HELLO, "v": Protocol.VERSION, "nick": _profile["nick"],
+		"avatar": _profile["avatar"], "device": _profile["device"]})
+
+
+func _fail(text: String) -> void:
+	error_text = text
+	link = Link.FAILED
+	if _ws != null:
+		_ws.close()
+
+
+## O anúncio da sala na rede (SPEC 9.2): nome, formato, lugares, ocupação e se aceita
+## gente nova.
+func _announcement(room: Object) -> Dictionary:
+	var summary: Dictionary = room.call("summary")
+	var options: Dictionary = room.get("options")
+	var seats: int = int(summary["seats"])
+	var players: int = int(summary["players"])
+	var lobby: bool = summary["phase"] == Protocol.LOBBY
+	var open: bool = players < seats and (lobby or bool(options["keep_open"]))
+	return {
+		"name": summary["name"], "format": summary["format"], "seats": seats,
+		"players": players, "phase": summary["phase"], "open": open, "port": port,
+	}
+
+
+## Troca de avatar (sala de espera). Vale também nas próximas reconexões.
+func set_avatar(avatar: int) -> void:
+	_profile["avatar"] = avatar
+	super(avatar)
+
+
+## Sai da mesa. Anfitrião com outro humano na sala: a sala passa para ele (na hora, ou
+## quando a mão acabar) e devolve {}. Anfitrião sozinho: encerra e devolve o placar.
+## Convidado: avisa o servidor (as fichas ficam guardadas por 10 minutos) e devolve {}.
+func leave() -> Dictionary:
+	if not final.is_empty():
+		return final
+	if is_host:
+		var room: Object = _server.rooms.get(room_id) if _server != null else null
+		if room != null and not room.call("is_closed") and _heir_of(room) != "":
+			_exiting = true
+			room.set("hold_hands", true)
+			send({"t": Protocol.LEAVE})
+			update()
+			return {}
+		owner(Protocol.CMD_CLOSE)
+		for _i in 3:
+			update()
+		return final
+	send({"t": Protocol.LEAVE})
+	_flush(300)
+	return final
+
+
+func pending_exit() -> bool:
+	return _exiting and not _exited
+
+
+## Fecha a rede: o servidor (depois de entregar o que falta), os anúncios e a conexão.
+func shutdown() -> void:
+	if _announcer != null:
+		_announcer.close()
+		_announcer = null
+	if _ws_server != null:
+		_flush(250)
+		_ws_server.stop()
+		_ws_server = null
+	if _ws != null:
+		_ws.close()
+		_ws = null
+	_server = null
+	_client = null
+
+
+func status_text() -> String:
+	if pending_exit():
+		return "Você saiu. A sala passa para outro jogador quando esta mão acabar."
+	if link == Link.RECONNECTING:
+		if _moving_to != "":
+			return "O anfitrião saiu. A sala está passando para o celular de %s…" % _moving_to
+		return "Aguardando o anfitrião… tentando reconectar."
+	if _host_since >= 0 and _clock.now_ms() - _host_since < HOST_NOTICE_MS:
+		return "O anfitrião saiu. Agora a sala roda neste celular: mantenha o app aberto."
+	return ""
+
+
+func failure() -> String:
+	if link == Link.FAILED:
+		return error_text
+	if _exited:
+		return "Você saiu. A sala ficou com %s." % heir_nick if heir_nick != "" \
+			else "A sala foi encerrada."
+	if left_reason == Protocol.R_KICKED:
+		return "O dono da sala tirou você da sala."
+	return ""
+
+
+func leave_question() -> Array[String]:
+	if is_host:
+		var room: Object = _server.rooms.get(room_id) if _server != null else null
+		if room != null and _heir_of(room) != "":
+			return ["Sair da sala?", "A partida continua no celular de outro jogador. " \
+				+ "Suas fichas ficam guardadas por 10 minutos.", "Sair"]
+		return ["Encerrar a sala?", "A partida termina para todos e cada um vê o placar.",
+			"Encerrar"]
+	return ["Sair da mesa?", "Suas fichas ficam guardadas por 10 minutos, se quiser voltar.",
+		"Sair"]
+
+
+## Dá tempo para o que está na fila sair pela rede antes de fechar.
+func _flush(ms: int) -> void:
+	var until: int = Time.get_ticks_msec() + ms
+	while Time.get_ticks_msec() < until:
+		if is_host and _ws_server != null:
+			_ws_server.poll()
+		elif _ws != null:
+			for message: Dictionary in _ws.poll():
+				_track(message)
+				if message.get("t") == Protocol.LEFT:
+					return
+		OS.delay_msec(10)

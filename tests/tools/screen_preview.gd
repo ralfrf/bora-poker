@@ -17,6 +17,9 @@ const GameScreen := preload("res://ui/screens/game_screen.gd")
 const ResultScreen := preload("res://ui/screens/result_screen.gd")
 const SettingsScreen := preload("res://ui/screens/settings_screen.gd")
 const HelpScreen := preload("res://ui/screens/help_screen.gd")
+const WifiRoomsScreen := preload("res://ui/screens/wifi_rooms_screen.gd")
+const WaitingScreen := preload("res://ui/screens/waiting_screen.gd")
+const WifiGame := preload("res://ui/app/wifi_game.gd")
 
 const FAST: Dictionary = {"hand_gap_ms": 0, "showdown_gap_ms": 0, "bot_min_ms": 0,
 	"bot_max_ms": 0, "bot_evaluations": 120}
@@ -76,8 +79,46 @@ func _ready() -> void:
 			screen = GameScreen.new(live)
 		"result", "result_t":
 			screen = _result(screen_name == "result_t")
+		"rooms", "rooms_list":
+			screen = WifiRoomsScreen.new()
+		"wifi_setup":
+			screen = OfflineSetupScreen.new(profile, true)
+		"waiting":
+			screen = WaitingScreen.new(_waiting_game(seats))
 	screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(screen)
+	if screen_name == "rooms_list":
+		var now: int = Time.get_ticks_msec() + 100000
+		screen.get("_listener").rooms = {
+			"192.168.0.23": {"ip": "192.168.0.23", "port": 47820, "name": "Sala de Bia",
+				"format": "classic", "seats": 6, "players": 3, "phase": "lobby", "open": true,
+				"seen": now},
+			"192.168.0.31": {"ip": "192.168.0.31", "port": 47820, "name": "Sala de Caio",
+				"format": "tournament", "seats": 4, "players": 4, "phase": "playing",
+				"open": false, "seen": now},
+		}
+		screen.call("_refresh")
+
+
+## Sala de espera do anfitrião, com um bot e um convidado de verdade pela rede local.
+func _waiting_game(seats: int) -> WifiGame:
+	var options: Dictionary = OfflineOptions.build_room(OfflineOptions.clean({"seats": seats}))
+	var host: WifiGame = WifiGame.new()
+	host.host("Rafa", 4, "aparelho-foto", options, FAST, Callable(),
+		["127.0.0.1"] as Array[String], 0, 47899)
+	host.host_ip = "192.168.0.23"
+	var guest: WifiGame = WifiGame.new()
+	guest.join("127.0.0.1", host.port, "Bia", 2, "aparelho-bia")
+	for _i in 200:
+		host.update()
+		guest.update()
+		if guest.my_id != "":
+			break
+		OS.delay_msec(5)
+	host.owner("add_bot", {"level": 2})
+	host.update()
+	set_meta("guest", guest)
+	return host
 
 
 ## Partida de verdade, com relógio manual: anda até a situação pedida e congela.
