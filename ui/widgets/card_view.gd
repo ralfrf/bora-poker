@@ -4,7 +4,6 @@ extends Control
 
 const Paint := preload("res://ui/widgets/paint.gd")
 const Cards := preload("res://engine/cards.gd")
-const Prefs := preload("res://ui/app/prefs.gd")
 const T: String = "Tokens"
 
 var card: int = -1:
@@ -110,12 +109,8 @@ func _draw() -> void:
 		draw_style_box(ring, rect.grow(maxf(1.5 * unit, 1.5)))
 
 
-## Cor do naipe: vermelho e preto, ou paus verde e ouros azul no baralho de 4 cores.
+## Cor do naipe: copas e ouros em vermelho, paus e espadas em preto.
 static func ink_of(control: Control, suit_index: int) -> Color:
-	if Prefs.four_color and suit_index == 0:
-		return control.get_theme_color("card_green", T)
-	if Prefs.four_color and suit_index == 1:
-		return control.get_theme_color("card_blue", T)
 	if suit_index == 1 or suit_index == 2:
 		return control.get_theme_color("card_red", T)
 	return control.get_theme_color("card_black", T)

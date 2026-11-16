@@ -9,8 +9,7 @@ extends RefCounted
 ##
 ## fonts: [fonte dos textos, peso, fonte dos números e títulos, peso].
 ## Cores em pares *_top / * (alto e base do degradê) e *_line (contorno).
-## card_green e card_blue: paus e ouros no baralho de 4 cores. avatar_0 a avatar_9: o
-## fundo de cada avatar.
+## avatar_0 a avatar_9: o fundo de cada avatar.
 ## Estilos (inteiros):
 ##   table_shape: 0 estádio (pontas redondas), 1 oval
 ##   card_style:  0 índice no canto e naipe grande embaixo, 1 valor grande e naipe ao lado
@@ -45,7 +44,6 @@ const ALL: Array[Dictionary] = [
 			"button": "#141E2E", "button_top": "#33435E", "button_line": "#0A0F18",
 			"fold": "#5E101B", "fold_top": "#B43444", "fold_line": "#3A070F",
 			"call": "#123579", "call_top": "#3A74D6", "call_line": "#0A1E4A",
-			"card_green": "#1C7F3C", "card_blue": "#1E56C2",
 			"avatar_0": "#E9B949", "avatar_1": "#D1343F", "avatar_2": "#EFE8D8",
 			"avatar_3": "#2C9A5E", "avatar_4": "#7A4FCF", "avatar_5": "#1D97A6",
 			"avatar_6": "#EE7A2B", "avatar_7": "#283F6E", "avatar_8": "#2F6FE0",

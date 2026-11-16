@@ -19,26 +19,21 @@ func test_settings_round_trip() -> void:
 	var profile: Profile = Profile.new()
 	profile.load_file(TEST_PROFILE)
 	assert_true(profile.sound and profile.vibration, "som e vibração ligados no começo")
-	assert_false(profile.four_color, "baralho de 2 cores no começo")
 	profile.set_nick("Rafa")
 	profile.sound = false
 	profile.vibration = false
-	profile.four_color = true
 	profile.avatar = 9
 	assert_true(profile.save(), "salvou")
 	var again: Profile = Profile.new()
 	again.load_file(TEST_PROFILE)
 	assert_false(again.sound, "som desligado guardado")
 	assert_false(again.vibration, "vibração desligada guardada")
-	assert_true(again.four_color, "4 cores guardado")
 	assert_eq(again.avatar, 9, "o último dos 10 avatares")
 	assert_false(Prefs.sound, "ao ler, as configurações entram em vigor")
-	assert_true(Prefs.four_color)
 	again.sound = true
 	again.vibration = true
-	again.four_color = false
 	again.apply()
-	assert_true(Prefs.sound and Prefs.vibration and not Prefs.four_color, "apply devolve")
+	assert_true(Prefs.sound and Prefs.vibration, "apply devolve")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PROFILE))
 
 

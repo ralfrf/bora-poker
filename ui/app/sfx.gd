@@ -6,7 +6,7 @@ extends RefCounted
 ##   ficha:   duas fichas batendo (apostas e pote)
 ##   vitoria: arpejo de sinos (você ganhou o pote)
 ##   vez:     dois toques suaves (chegou a sua vez)
-##   batida:  duas batidas de nó dos dedos na mesa (alguém passou)
+##   batida:  duas batidas secas na mesa (alguém passou)
 ##   desiste: cartas deslizando e caindo no feltro (alguém desistiu)
 ##
 ## A vibração usa Input.vibrate_handheld, do próprio Godot, que existe no Android e no
@@ -97,36 +97,56 @@ static func _samples(sound_name: String) -> PackedFloat32Array:
 	return PackedFloat32Array()
 
 
-## Passar: duas batidas na mesa de madeira oca. O som oco vem das ressonâncias médias
-## do tampo (230, 470, 820 e 1350 Hz), que somem em tempos diferentes, sem o grave
-## surdo; na frente, um clique curto e abafado do nó dos dedos.
+## Passar: duas batidas na mesa. Um "toc" seco de madeira: um sopro curto de ruído
+## passa por ressonâncias largas e abafadas (180, 420 e 950 Hz), que não ficam tocando
+## (tons puros longos soam como bambu ou cano), mais um corpo grave bem curto.
 static func _knock() -> PackedFloat32Array:
-	var n: int = int(RATE * 0.3)
+	var n: int = int(RATE * 0.26)
 	var out: PackedFloat32Array = PackedFloat32Array()
 	out.resize(n)
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	rng.seed = 31
-	# [frequência, queda em segundos, volume] de cada ressonância.
-	var modes: Array = [[230.0, 0.075, 1.0], [470.0, 0.045, 0.6], [820.0, 0.024, 0.32],
-		[1350.0, 0.012, 0.16]]
+	# [frequência, largura da banda em Hz, volume]: banda larga = some rápido.
+	var bands: Array = [[180.0, 70.0, 1.0], [420.0, 140.0, 0.8], [950.0, 380.0, 0.45]]
 	for hit: Array in [[0.0, 1.0], [0.115, 0.8]]:
-		var start: float = hit[0]
+		var start: int = int(float(hit[0]) * RATE)
 		var gain: float = hit[1]
-		var low: float = 0.0
-		for i in n:
-			var t: float = float(i) / RATE - start
-			if t < 0.0:
-				continue
-			var v: float = 0.0
-			for mode: Array in modes:
-				# A primeira ressonância começa um pouco mais aguda, como no impacto real.
-				var f: float = mode[0] * (1.0 + 0.06 * exp(-t / 0.008))
-				v += mode[2] * sin(TAU * f * t) * exp(-t / mode[1])
-			var noise: float = rng.randf_range(-1.0, 1.0)
-			low += (noise - low) * 0.3
-			v += low * 0.6 * exp(-t / 0.003)
-			out[i] += v * minf(t / 0.0007, 1.0) * gain * 0.5
-	return out
+		var excite: PackedFloat32Array = PackedFloat32Array()
+		excite.resize(n - start)
+		for i in excite.size():
+			var t: float = float(i) / RATE
+			excite[i] = rng.randf_range(-1.0, 1.0) * exp(-t / 0.0035)
+		var mix: PackedFloat32Array = PackedFloat32Array()
+		mix.resize(excite.size())
+		for band: Array in bands:
+			var r: float = exp(-PI * float(band[1]) / RATE)
+			var a1: float = -2.0 * r * cos(TAU * float(band[0]) / RATE)
+			var a2: float = r * r
+			# Ganho igual no centro de cada banda, para nenhuma dominar.
+			var norm: float = 2.0 * sin(TAU * float(band[0]) / RATE)
+			var y1: float = 0.0
+			var y2: float = 0.0
+			for i in excite.size():
+				var y: float = (1.0 - r) * excite[i] - a1 * y1 - a2 * y2
+				y2 = y1
+				y1 = y
+				mix[i] += y * float(band[2]) * norm
+		for i in mix.size():
+			var t: float = float(i) / RATE
+			var body: float = 0.25 * sin(TAU * 130.0 * t) * exp(-t / 0.014) * minf(t / 0.001, 1.0)
+			out[start + i] += (mix[i] * 4.0 + body) * gain
+	return _normalized(out, 0.85)
+
+
+## O mesmo som com o pico em peak.
+static func _normalized(samples: PackedFloat32Array, peak: float) -> PackedFloat32Array:
+	var top: float = 0.0
+	for v: float in samples:
+		top = maxf(top, absf(v))
+	if top > 0.0:
+		for i in samples.size():
+			samples[i] *= peak / top
+	return samples
 
 
 ## Desistir: as duas cartas jogadas no monte. Um "fwip" curto de papel e, logo depois,

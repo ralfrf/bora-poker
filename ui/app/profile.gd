@@ -1,7 +1,7 @@
 extends RefCounted
 ## Perfil guardado só neste celular (SPEC 4.4, 11.1 e 11.3): apelido, avatar, o último
-## modo usado, as últimas escolhas da mesa offline e as configurações (som, vibração e
-## baralho de 4 cores). Sem cadastro e sem dado pessoal.
+## modo usado, as últimas escolhas da mesa offline e as configurações (som e
+## vibração). Sem cadastro e sem dado pessoal.
 ##
 ## device é um código aleatório deste aparelho, usado pelo servidor para reconhecer
 ## quem volta (SPEC 6.1). Nunca aparece na tela.
@@ -22,7 +22,6 @@ var offline: Dictionary = {}
 var device: String = ""
 var sound: bool = true
 var vibration: bool = true
-var four_color: bool = false
 
 var _path: String = PATH
 
@@ -45,7 +44,6 @@ func load_file(path: String = PATH) -> void:
 		offline = raw_offline if typeof(raw_offline) == TYPE_DICTIONARY else {}
 		sound = _flag(file.get_value("config", "sons", true), true)
 		vibration = _flag(file.get_value("config", "vibracao", true), true)
-		four_color = _flag(file.get_value("config", "quatro_cores", false), false)
 	if device.length() < 16:
 		device = Crypto.new().generate_random_bytes(12).hex_encode()
 	apply()
@@ -60,7 +58,6 @@ func save() -> bool:
 	file.set_value("offline", "escolhas", offline)
 	file.set_value("config", "sons", sound)
 	file.set_value("config", "vibracao", vibration)
-	file.set_value("config", "quatro_cores", four_color)
 	return file.save(_path) == OK
 
 
@@ -77,7 +74,6 @@ func set_nick(text: String) -> void:
 func apply() -> void:
 	Prefs.sound = sound
 	Prefs.vibration = vibration
-	Prefs.four_color = four_color
 
 
 static func _flag(raw: Variant, fallback: bool) -> bool:

@@ -5,4 +5,3 @@ extends RefCounted
 
 static var sound: bool = true
 static var vibration: bool = true
-static var four_color: bool = false
