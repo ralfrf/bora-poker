@@ -149,6 +149,32 @@ func test_after_60s_seat_is_freed_and_chips_held() -> void:
 	assert_true(room.table.is_balanced())
 
 
+func test_held_player_watches_full_room_until_a_seat_opens() -> void:
+	var parts: Array = _three({"turn_seconds": 0, "seats": 3, "keep_open": true})
+	var room: Room = parts[0]
+	var c: String = parts[3]
+	_fold_until(room, func() -> bool: return room.table.hand_number >= 2)
+	room.drop_connection(c)
+	_clock.advance(60000)
+	room.tick()
+	_fold_until(room, func() -> bool: return not room.members.has(c))
+	var davi: Dictionary = _join(room, "Davi", "dev-d")
+	assert_true(davi["ok"] and room.members[davi["id"]].seat >= 0, "Davi pega o lugar")
+	assert_false(_join(room, "Eva", "dev-e")["ok"], "sala cheia: gente nova não entra")
+	var back: Dictionary = _join(room, "Caio", "dev-c")
+	assert_true(back["ok"], "quem caiu entra mesmo com a sala cheia")
+	assert_eq(room.members[c].seat, -1, "assistindo")
+	assert_eq(_last_state(c)["you"]["return_offer"].get("seat"), false, "sem lugar ainda")
+	room.handle(c, {"t": Protocol.RETURN_CHOICE, "keep": true})
+	assert_eq(room.members[c].seat, -1, "não volta sem lugar")
+	room.leave(davi["id"])
+	_fold_until(room, func() -> bool: return not room.members.has(davi["id"]))
+	assert_eq(_last_state(c)["you"]["return_offer"].get("seat"), true, "abriu lugar")
+	room.handle(c, {"t": Protocol.RETURN_CHOICE, "keep": true})
+	assert_true(room.members[c].seat >= 0, "voltou à mesa")
+	assert_true(room.table.is_balanced())
+
+
 func test_return_with_initial_chips_counts_as_rebuy() -> void:
 	var parts: Array = _three({"turn_seconds": 0, "rebuy_limit": 1, "starting_stack": 2000,
 		"small_blind": 10, "big_blind": 20})

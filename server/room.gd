@@ -198,7 +198,8 @@ func _init(room_id: String, room_options: Dictionary, clock: Clock, send: Callab
 ##
 ## Quem volta (SPEC 6.1 e 6.2) é reconhecido pelo apelido e pelo código do aparelho:
 ## ainda na sala (caiu há pouco, ou torneio), retoma o mesmo participante (resumed);
-## com fichas guardadas e lugar livre, entra com a oferta de volta (you.return_offer).
+## com fichas guardadas, entra assistindo com a oferta de volta (you.return_offer), que
+## só pode ser aceita quando houver lugar livre.
 func join(profile: Dictionary, spectate: bool = false) -> Dictionary:
 	if phase == Protocol.ENDED:
 		return {"ok": false, "error": "a sala já foi encerrada", "id": "", "resumed": false}
@@ -218,10 +219,9 @@ func join(profile: Dictionary, spectate: bool = false) -> Dictionary:
 		_check_owner()
 		return {"ok": true, "error": "", "id": back.id, "resumed": true}
 	# Só assiste quem já estava na sala: quem chega precisa de lugar (pedido do dono,
-	# 16/11/2026). A única exceção é pedir para assistir na sala de espera.
+	# 16/11/2026). Exceções: quem caiu e tem fichas guardadas (entra assistindo e volta à
+	# mesa quando abrir lugar) e quem pede para assistir na sala de espera.
 	var held_id: String = _held_id(device, base)
-	if held_id != "" and _free_seat() < 0:
-		return {"ok": false, "error": "a sala está cheia", "id": "", "resumed": false}
 	var member: Member = _new_member(base, int(profile.get("avatar", 0)), false, held_id)
 	member.device = device
 	member.base_nick = base

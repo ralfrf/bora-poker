@@ -3,7 +3,7 @@ extends Control
 ## Nada é gravado no perfil de verdade.
 ##   --screen=profile | profile_edit | home | setup | setup_t | game | showdown |
 ##            rebuy | watching | ranking | history | result | result_t | live | settings |
-##            help | rules
+##            help | rules | reactions | spectator | paused | held | held_seat
 ##   --seed=N  (game e showdown: muda a mesa sorteada)
 
 const Profile := preload("res://ui/app/profile.gd")
@@ -68,7 +68,7 @@ func _ready() -> void:
 			screen = _game("game", seats, false, true)
 		"history":
 			screen = _game("history", seats)
-		"reactions", "spectator", "paused":
+		"reactions", "spectator", "paused", "held", "held_seat":
 			# Etapa 4, parte B: painel e balões de reação, quem assiste com "Sentar" e mesa pausada.
 			screen = _game("game", seats, false, false, screen_name)
 		"watching":
@@ -178,6 +178,10 @@ func _game(kind: String, seats: int, watching: bool = false, ranking: bool = fal
 		var table_view: Control = screen.get_child(0)
 		if extra == "spectator":
 			target["you"] = {"id": "assistindo", "seat": -1, "can_sit": true, "sit_rebuy": false}
+		elif extra == "held" or extra == "held_seat":
+			# Voltou com fichas guardadas: sala cheia (held) ou com lugar livre (held_seat).
+			target["you"] = {"id": "assistindo", "seat": -1, "return_offer": {"before": 150000,
+				"initial": 200000, "seat": extra == "held_seat", "can_initial": true}}
 		elif extra == "paused":
 			target["room"]["paused"] = true
 			target["room"]["phase"] = "playing"

@@ -67,8 +67,12 @@ static func _voice(root: Node) -> AudioStreamPlayer:
 		for i in VOICES:
 			var player: AudioStreamPlayer = AudioStreamPlayer.new()
 			player.process_mode = Node.PROCESS_MODE_ALWAYS
-			root.add_child(player)
+			# Depois do quadro: o primeiro som pode vir enquanto a raiz ainda monta a cena
+			# (a sala que volta ao abrir o app), e aí ela não aceita filhos.
+			root.add_child.call_deferred(player)
 			_players.append(player)
+	if not _players[0].is_inside_tree():
+		return null   # as vozes entram na árvore no fim do quadro; este som fica de fora
 	# Uma voz livre; se todas estiverem tocando, a mais antiga dá lugar.
 	for i in VOICES:
 		var player: AudioStreamPlayer = _players[(_next + i) % VOICES]

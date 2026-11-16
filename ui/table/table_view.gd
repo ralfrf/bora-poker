@@ -23,6 +23,8 @@ signal history_requested
 signal reactions_requested
 ## Quem assiste tocou em "Sentar".
 signal sit_requested
+## Quem voltou com fichas guardadas toca em "Voltar à mesa" (reabre a pergunta).
+signal return_requested
 ## O dono tocou em pausar (true) ou retomar (false).
 signal pause_requested(on: bool)
 
@@ -437,6 +439,8 @@ func _show_column(table: Dictionary, you: Dictionary, me: Dictionary,
 			kind = "away"
 		elif _my_seat < 0 and you.get("can_sit", false):
 			kind = "sit"
+		elif _my_seat < 0 and you.get("return_offer", {}).get("seat", false):
+			kind = "return"
 	_bar.visible = not legal.is_empty()
 	_prompt.visible = kind != ""
 	_waiting.visible = legal.is_empty() and kind == ""
@@ -471,6 +475,11 @@ func _show_column(table: Dictionary, you: Dictionary, me: Dictionary,
 				" Sentar conta como recompra." if you.get("sit_rebuy", false) else "")
 			_prompt_main.set_content("Sentar", -1)
 			_prompt_alt.visible = false
+		"return":
+			# Voltou com fichas guardadas (SPEC 6.2) e abriu lugar.
+			_prompt_text.text = "Suas fichas estão guardadas. Há um lugar livre."
+			_prompt_main.set_content("Voltar à mesa", -1)
+			_prompt_alt.visible = false
 	_place_prompt()
 
 
@@ -498,6 +507,8 @@ func _on_prompt(main: bool) -> void:
 			back_requested.emit()
 		"sit":
 			sit_requested.emit()
+		"return":
+			return_requested.emit()
 
 
 ## Relógios parados: mesa pausada pelo dono, ou esperando o anfitrião voltar.
@@ -573,6 +584,8 @@ func _waiting_text(table: Dictionary, you: Dictionary, members: Dictionary) -> S
 		var owner: bool = str(_state["room"].get("owner", "")) == str(you.get("id", "-"))
 		return "Mesa pausada. Para retomar, toque no botão no alto da mesa." if owner \
 			else "Mesa pausada pelo dono."
+	if _my_seat < 0 and you.has("return_offer"):
+		return "Fichas guardadas. Você volta quando abrir um lugar."
 	if _my_seat < 0:
 		return "Assistindo"
 	var to_act: int = int(table.get("to_act", -1))

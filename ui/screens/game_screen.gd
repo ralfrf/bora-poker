@@ -46,6 +46,9 @@ func _ready() -> void:
 	_table.history_requested.connect(open_history)
 	_table.reactions_requested.connect(open_reactions)
 	_table.sit_requested.connect(func() -> void: _game.sit_at(-1))
+	_table.return_requested.connect(func() -> void:
+		_offer_seen = false
+		_check_offer(_game.last_state.get("you", {})))
 	_table.pause_requested.connect(func(on: bool) -> void:
 		_game.owner(Protocol.CMD_PAUSE if on else Protocol.CMD_RESUME))
 	_table.reactions_enabled = _game.has_reactions()
