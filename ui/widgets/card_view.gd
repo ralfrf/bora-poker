@@ -4,6 +4,7 @@ extends Control
 
 const Paint := preload("res://ui/widgets/paint.gd")
 const Cards := preload("res://engine/cards.gd")
+const Prefs := preload("res://ui/app/prefs.gd")
 const T: String = "Tokens"
 
 var card: int = -1:
@@ -109,6 +110,17 @@ func _draw() -> void:
 		draw_style_box(ring, rect.grow(maxf(1.5 * unit, 1.5)))
 
 
+## Cor do naipe: vermelho e preto, ou paus verde e ouros azul no baralho de 4 cores.
+static func ink_of(control: Control, suit_index: int) -> Color:
+	if Prefs.four_color and suit_index == 0:
+		return control.get_theme_color("card_green", T)
+	if Prefs.four_color and suit_index == 1:
+		return control.get_theme_color("card_blue", T)
+	if suit_index == 1 or suit_index == 2:
+		return control.get_theme_color("card_red", T)
+	return control.get_theme_color("card_black", T)
+
+
 func _draw_face(rect: Rect2, unit: float, radius: float) -> void:
 	var face: Color = get_theme_color("card_face", T)
 	Paint.gradient_rect(self, rect, radius, face, get_theme_color("card_face_low", T))
@@ -122,8 +134,7 @@ func _draw_face(rect: Rect2, unit: float, radius: float) -> void:
 
 	var suit_index: int = Cards.suit(card)
 	var rank: int = Cards.rank(card)
-	var ink: Color = get_theme_color("card_red", T) if suit_index == 1 or suit_index == 2 \
-		else get_theme_color("card_black", T)
+	var ink: Color = ink_of(self, suit_index)
 	var label: String = Cards.RANK_LABELS[rank - 2]
 	var font: Font = get_theme_font("display", T)
 	var w: float = size.x

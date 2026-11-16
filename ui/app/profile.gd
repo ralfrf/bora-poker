@@ -1,25 +1,28 @@
 extends RefCounted
-## Perfil guardado só neste celular (SPEC 4.4 e 11.1): apelido, avatar, o último modo
-## usado e as últimas escolhas da mesa offline. Sem cadastro e sem dado pessoal.
+## Perfil guardado só neste celular (SPEC 4.4, 11.1 e 11.3): apelido, avatar, o último
+## modo usado, as últimas escolhas da mesa offline e as configurações (som, vibração e
+## baralho de 4 cores). Sem cadastro e sem dado pessoal.
 ##
 ## device é um código aleatório deste aparelho, usado pelo servidor para reconhecer
 ## quem volta (SPEC 6.1). Nunca aparece na tela.
 
 const Room := preload("res://server/room.gd")
+const Prefs := preload("res://ui/app/prefs.gd")
 
 const PATH: String = "user://perfil.cfg"
 const MODE_OFFLINE: String = "offline"
 const MODE_WIFI: String = "wifi"
 const MODE_ONLINE: String = "online"
 const MODES: Array[String] = [MODE_OFFLINE, MODE_WIFI, MODE_ONLINE]
-## Avatares provisórios oferecidos na primeira abertura (os cerca de 10 vêm depois).
-const AVATAR_CHOICES: Array[int] = [0, 1, 2]
 
 var nick: String = ""
 var avatar: int = 0
 var last_mode: String = MODE_OFFLINE
 var offline: Dictionary = {}
 var device: String = ""
+var sound: bool = true
+var vibration: bool = true
+var four_color: bool = false
 
 var _path: String = PATH
 
@@ -40,8 +43,12 @@ func load_file(path: String = PATH) -> void:
 		device = raw_device if typeof(raw_device) == TYPE_STRING else ""
 		var raw_offline: Variant = file.get_value("offline", "escolhas", {})
 		offline = raw_offline if typeof(raw_offline) == TYPE_DICTIONARY else {}
+		sound = _flag(file.get_value("config", "sons", true), true)
+		vibration = _flag(file.get_value("config", "vibracao", true), true)
+		four_color = _flag(file.get_value("config", "quatro_cores", false), false)
 	if device.length() < 16:
 		device = Crypto.new().generate_random_bytes(12).hex_encode()
+	apply()
 
 
 func save() -> bool:
@@ -51,6 +58,9 @@ func save() -> bool:
 	file.set_value("perfil", "ultimo_modo", last_mode)
 	file.set_value("perfil", "aparelho", device)
 	file.set_value("offline", "escolhas", offline)
+	file.set_value("config", "sons", sound)
+	file.set_value("config", "vibracao", vibration)
+	file.set_value("config", "quatro_cores", four_color)
 	return file.save(_path) == OK
 
 
@@ -61,3 +71,14 @@ func is_new() -> bool:
 
 func set_nick(text: String) -> void:
 	nick = Room.clean_nick(text) if text.strip_edges() != "" else ""
+
+
+## Põe as configurações deste perfil em vigor no app.
+func apply() -> void:
+	Prefs.sound = sound
+	Prefs.vibration = vibration
+	Prefs.four_color = four_color
+
+
+static func _flag(raw: Variant, fallback: bool) -> bool:
+	return raw if typeof(raw) == TYPE_BOOL else fallback

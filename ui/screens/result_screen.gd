@@ -1,7 +1,8 @@
 extends "res://ui/screens/screen.gd"
-## Placar final (clássico) ou classificação do torneio (SPEC 11.1, passo 7). Depois
-## dele vem o início; o anúncio de tela cheia, quando existir, entra entre os dois
-## (SPEC 12), nunca durante a partida.
+## Placar final (clássico) ou pódio do torneio (SPEC 11.1, passo 7). No torneio, os três
+## primeiros sobem ao pódio, com confete, e os demais aparecem na lista ao lado. Depois
+## desta tela vem o início ou outra partida; o anúncio de tela cheia, quando existir,
+## entra no meio (SPEC 12, ui/app/ads.gd), nunca durante a partida.
 
 signal again
 signal home
@@ -9,14 +10,17 @@ signal home
 const Money := preload("res://engine/money.gd")
 const Paint := preload("res://ui/widgets/paint.gd")
 const AvatarButton := preload("res://ui/widgets/avatar_button.gd")
+const Podium := preload("res://ui/widgets/podium.gd")
+const Confetti := preload("res://ui/widgets/confetti.gd")
+const Sfx := preload("res://ui/app/sfx.gd")
 
 
 ## A tabela do placar, desenhada linha a linha.
 class Board:
 	extends Control
 
-	## Linhas: {nick, avatar, me, place, chips, net}. tournament: mostra o lugar
-	## em vez do saldo.
+	## Linhas: {nick, avatar, me, place, chips, net}. tournament: só o lugar, o
+	## avatar e o apelido (a lista de quem ficou fora do pódio).
 	var rows: Array = []
 	var tournament: bool = false
 	const HEAD: float = 22.0
@@ -39,11 +43,16 @@ class Board:
 		var chips_x: float = size.x * 0.62
 		var net_x: float = size.x
 		var head_font: Font = get_theme_font("text", T)
-		draw_string(head_font, Vector2(0, 14), "Jogador", HORIZONTAL_ALIGNMENT_LEFT, -1, small, dim)
-		draw_string(head_font, Vector2(chips_x - 120.0, 14), "Fichas", HORIZONTAL_ALIGNMENT_RIGHT,
-			120, small, dim)
-		draw_string(head_font, Vector2(net_x - 120.0, 14),
-			"Lugar" if tournament else "Saldo", HORIZONTAL_ALIGNMENT_RIGHT, 120, small, dim)
+		if tournament:
+			draw_string(head_font, Vector2(0, 14), "Classificação", HORIZONTAL_ALIGNMENT_LEFT, -1,
+				small, dim)
+		else:
+			draw_string(head_font, Vector2(0, 14), "Jogador", HORIZONTAL_ALIGNMENT_LEFT, -1, small,
+				dim)
+			draw_string(head_font, Vector2(chips_x - 120.0, 14), "Fichas",
+				HORIZONTAL_ALIGNMENT_RIGHT, 120, small, dim)
+			draw_string(head_font, Vector2(net_x - 120.0, 14), "Saldo",
+				HORIZONTAL_ALIGNMENT_RIGHT, 120, small, dim)
 		var h: float = row_height()
 		var colors: Array[Color] = AvatarButton.colors_of(self)
 		for i in rows.size():
@@ -60,20 +69,22 @@ class Board:
 				draw_line(Vector2(0, top + h), Vector2(size.x, top + h),
 					Color(get_theme_color("surface_line", T), 0.6), 1.0)
 			var r: float = minf(h * 0.36, 13.0)
-			Paint.avatar(self, Rect2(Vector2(r, mid) - Vector2.ONE * r, Vector2.ONE * r * 2.0),
-				int(row.get("avatar", 0)), colors, 0, 0.0)
+			var left: float = 0.0
+			if tournament:
+				var place: int = int(row.get("place", 0))
+				draw_string(number_font, Vector2(0, mid + body * 0.36),
+					"%dº" % place if place > 0 else "—", HORIZONTAL_ALIGNMENT_LEFT, 34, body, dim)
+				left = 36.0
+			Paint.avatar(self, Rect2(Vector2(left + r, mid) - Vector2.ONE * r,
+				Vector2.ONE * r * 2.0), int(row.get("avatar", 0)), colors, 0, 0.0)
 			var nick: String = String(row.get("nick", ""))
 			if row.get("me", false):
 				nick += " (você)"
-			draw_string(text_font, Vector2(r * 2.0 + 10.0, mid + body * 0.36), nick,
-				HORIZONTAL_ALIGNMENT_LEFT, chips_x - 150.0, body, ink)
-			_amount(number_font, int(row.get("chips", 0)), chips_x, mid, body, ink, false)
-			if tournament:
-				var place: int = int(row.get("place", 0))
-				var label: String = "%dº" % place if place > 0 else "—"
-				draw_string(number_font, Vector2(net_x - 120.0, mid + body * 0.36), label,
-					HORIZONTAL_ALIGNMENT_RIGHT, 120, body, accent if place == 1 else ink)
-			else:
+			var nick_w: float = size.x - left - r * 2.0 - 10.0 if tournament else chips_x - 150.0
+			draw_string(text_font, Vector2(left + r * 2.0 + 10.0, mid + body * 0.36), nick,
+				HORIZONTAL_ALIGNMENT_LEFT, nick_w, body, ink)
+			if not tournament:
+				_amount(number_font, int(row.get("chips", 0)), chips_x, mid, body, ink, false)
 				var net: int = int(row.get("net", 0))
 				var color: Color = accent if net > 0 else (get_theme_color("danger", T) if net < 0 else dim)
 				_amount(number_font, net, net_x, mid, body, color, true)
@@ -99,6 +110,8 @@ var my_id: String = ""
 var _title: Label = null
 var _subtitle: Label = null
 var _board: Board = null
+var _podium: Podium = null
+var _confetti: Confetti = null
 var _again: Button = null
 var _home: Button = null
 
@@ -121,6 +134,7 @@ func _build() -> void:
 	_board = Board.new()
 	_board.tournament = tournament
 	var my_row: Dictionary = {}
+	var top: Array = []
 	for row: Dictionary in final.get("scoreboard", []):
 		var entry: Dictionary = {
 			"nick": row.get("nick", ""), "avatar": avatars.get(row.get("id", ""), 0),
@@ -130,8 +144,27 @@ func _build() -> void:
 		}
 		if entry["me"]:
 			my_row = entry
-		_board.rows.append(entry)
+		if tournament and entry["place"] >= 1 and entry["place"] <= 3:
+			top.append(entry)
+		else:
+			_board.rows.append(entry)
+	top.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["place"] < b["place"])
+	if tournament:
+		_board.rows.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+			return (a["place"] if a["place"] > 0 else 99) < (b["place"] if b["place"] > 0 else 99))
 	add_child(_board)
+	# Pódio só quando há campeão; sem ele (torneio interrompido), fica só a lista.
+	if not top.is_empty() and int(top[0]["place"]) == 1:
+		_podium = Podium.new()
+		_podium.entries = top.slice(0, 3)
+		add_child(_podium)
+		_confetti = Confetti.new()
+		_confetti.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		add_child(_confetti)
+	else:
+		_board.rows.append_array(top)
+		_board.rows.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+			return (a["place"] if a["place"] > 0 else 99) < (b["place"] if b["place"] > 0 else 99))
 	_title = Label.new()
 	_title.theme_type_variation = "TitleLabel"
 	_title.text = "Resultado do torneio" if tournament else "Placar"
@@ -146,6 +179,12 @@ func _build() -> void:
 	_again = action_button("Jogar de novo", true)
 	_again.pressed.connect(func() -> void: again.emit())
 	add_child(_again)
+	if _podium != null:
+		_podium.ready.connect(func() -> void:
+			_podium.play()
+			_confetti.burst.call_deferred()
+			if my_row.get("place", 0) == 1:
+				Sfx.play(Sfx.WIN, 0.9), CONNECT_DEFERRED)
 
 
 func _summary(row: Dictionary, tournament: bool) -> String:
@@ -171,8 +210,17 @@ func _layout() -> void:
 	place(_subtitle, Rect2(b.position.x, b.position.y + 32.0, b.size.x, 18))
 	var top: float = b.position.y + 60.0
 	var wanted: float = Board.HEAD + _board.rows.size() * 34.0
-	place(_board, Rect2(b.position.x + 8.0, top, minf(b.size.x - 16.0, 520.0),
-		minf(b.end.y - top, wanted)))
+	if _podium != null:
+		# Pódio à esquerda; quem ficou de fora, numa lista ao lado.
+		var list_w: float = 0.0 if _board.rows.is_empty() else minf(b.size.x * 0.4, 240.0)
+		var podium_w: float = b.size.x - list_w - (16.0 if list_w > 0.0 else 0.0)
+		place(_podium, Rect2(b.position.x, top, podium_w, b.end.y - top))
+		_podium.queue_redraw()
+		_board.visible = list_w > 0.0
+		place(_board, Rect2(b.end.x - list_w, top, list_w, minf(b.end.y - top, wanted)))
+	else:
+		place(_board, Rect2(b.position.x + 8.0, top, minf(b.size.x - 16.0, 520.0),
+			minf(b.end.y - top, wanted)))
 	_board.queue_redraw()
 	place(_again, Rect2(col.position.x, col.end.y - BUTTON_H, col.size.x, BUTTON_H))
 	place(_home, Rect2(col.position.x, col.end.y - BUTTON_H * 2.0 - 8.0, col.size.x, BUTTON_H))

@@ -15,6 +15,8 @@ signal leave_requested
 signal rebuy_answered(accept: bool)
 ## Toque em "Voltei" (estava ausente).
 signal back_requested
+## Toque no "?": abrir o ranking das mãos.
+signal help_requested
 
 const CardView := preload("res://ui/widgets/card_view.gd")
 const SeatView := preload("res://ui/widgets/seat_view.gd")
@@ -27,6 +29,7 @@ const AdSlot := preload("res://ui/widgets/ad_slot.gd")
 const BoardMarks := preload("res://ui/widgets/board_marks.gd")
 const ChipFlight := preload("res://ui/widgets/chip_flight.gd")
 const SafeArea := preload("res://ui/theme/safe_area.gd")
+const Sfx := preload("res://ui/app/sfx.gd")
 
 const BOARD_CARD: Vector2 = Vector2(44, 62)
 const MY_CARD: Vector2 = Vector2(56, 78)
@@ -37,6 +40,8 @@ const COLUMN_W: float = 136.0
 const SHEET_W: float = 248.0
 ## Distância mínima entre o anúncio e o botão mais alto (regra das lojas).
 const AD_GAP: float = 48.0
+## Vibra quando faltam estes milissegundos para acabar a sua vez.
+const WARN_MS: int = 5000
 const BAR_H: float = 52.0     # linha dos três botões; os atalhos abrem por cima
 ## Ângulo (graus, 0 à direita, 90 embaixo) de cada posição em volta da mesa.
 ## As do topo (4, 5 e 9) ficam numa linha reta, lado a lado.
@@ -70,6 +75,9 @@ var _waiting: Label = null
 var _ad: AdSlot = null
 var _marks: BoardMarks = null
 var _exit: Button = null
+var _help: Button = null
+var _my_turn: bool = false
+var _warned: bool = false
 var _banner: AmountView = null
 var _prompt: VBoxContainer = null
 var _prompt_text: Label = null
@@ -158,6 +166,12 @@ func _ready() -> void:
 	_exit.focus_mode = Control.FOCUS_NONE
 	_exit.pressed.connect(func() -> void: leave_requested.emit())
 	add_child(_exit)
+	_help = Button.new()
+	_help.text = "?"
+	_help.theme_type_variation = "QuietButton"
+	_help.focus_mode = Control.FOCUS_NONE
+	_help.pressed.connect(func() -> void: help_requested.emit())
+	add_child(_help)
 	_prompt = VBoxContainer.new()
 	_prompt.add_theme_constant_override("separation", 8)
 	_prompt.alignment = BoxContainer.ALIGNMENT_END
@@ -200,6 +214,9 @@ func _process(delta: float) -> void:
 		_turn_left_ms = maxi(0, _turn_left_ms - int(delta * 1000.0))
 		if turn_slot >= 0:
 			_seats[turn_slot].set_fraction(float(_turn_left_ms) / _turn_total_ms)
+		if _my_turn and not _warned and _turn_total_ms > WARN_MS and _turn_left_ms <= WARN_MS:
+			_warned = true
+			Sfx.vibrate(400)
 	if _rebuy_left_ms > 0:
 		var before: int = ceili(_rebuy_left_ms / 1000.0)
 		_rebuy_left_ms = maxi(0, _rebuy_left_ms - int(delta * 1000.0))
@@ -255,6 +272,12 @@ func render(state: Dictionary) -> void:
 				int(room.get("options", {}).get("turn_seconds", 0)) * 1000)
 	_turn_seat = to_act
 	_turn_left_ms = int(table.get("turn_ms", -1))
+	# Aviso da sua vez: som quando ela chega; a vibração vem perto do fim do tempo.
+	var my_turn: bool = live and _my_seat >= 0 and to_act == _my_seat and you.has("legal")
+	if my_turn and not _my_turn:
+		_warned = false
+		Sfx.play(Sfx.TURN, 0.15)
+	_my_turn = my_turn
 
 	for slot in SLOTS:
 		var seat_view: SeatView = _seats[slot]
@@ -648,6 +671,8 @@ func _layout() -> void:
 	_waiting.size = Vector2(column.size.x, BAR_H * 2.0)
 	_exit.size = Vector2(64, 40)
 	_exit.position = (Vector2(area.position.x + MARGIN, area.end.y - MARGIN - 40.0)).round()
+	_help.size = Vector2(40, 40)
+	_help.position = _exit.position + Vector2(_exit.size.x + 8.0, 0)
 	if _banner.visible:
 		_banner.place_at(_banner_point())
 
@@ -711,6 +736,8 @@ func _animate(events: Array, table: Dictionary, board_count: int, live: bool) ->
 		for slot: int in to_pot:
 			_fly_chips(_slot_point(slot) if not _last_bets.has(slot) else to_pot[slot],
 				_pot_point(), 0.0)
+		if not to_pot.is_empty():
+			Sfx.play(Sfx.CHIP, 0.25, -4.0)
 	else:
 		for slot: int in paid:
 			var bet_view: AmountView = _bets[slot]
@@ -718,6 +745,8 @@ func _animate(events: Array, table: Dictionary, board_count: int, live: bool) ->
 				_fly_chips(_slot_point(slot), _bet_point(slot), 0.0, 0.25)
 				bet_view.modulate.a = 0.0
 				create_tween().tween_property(bet_view, "modulate:a", 1.0, 0.12).set_delay(0.22)
+		if not paid.is_empty():
+			Sfx.play(Sfx.CHIP, 0.18)
 
 	if board_count > _shown_board:
 		var base: float = 0.3 if not to_pot.is_empty() else 0.0
@@ -733,16 +762,23 @@ func _animate(events: Array, table: Dictionary, board_count: int, live: bool) ->
 				delay += (i - first) * 0.07
 				origin = _board[0].position + BOARD_CARD / 2.0 + Vector2(0, -16)
 			card.fly_from(origin, delay)
+			Sfx.play(Sfx.CARD, delay + 0.05)
 	_shown_board = board_count
 
 	if ended:
 		var delay: float = 0.5 if not to_pot.is_empty() else 0.15
 		if table.get("result", {}).get("showdown", false):
 			delay += 0.6
+		var won: bool = false
 		for payout: Dictionary in table.get("result", {}).get("payouts", []):
 			var slot: int = _slot_of(int(payout.get("seat", -1)))
 			if slot >= 0:
 				_fly_chips(_pot_point(), _slot_point(slot), delay, 0.5)
+				won = won or (_my_seat >= 0 and int(payout.get("seat", -1)) == _my_seat)
+		if not table.get("result", {}).get("payouts", []).is_empty():
+			Sfx.play(Sfx.CHIP, delay + 0.4)
+		if won:
+			Sfx.play(Sfx.WIN, delay + 0.1)
 		_pot_fade(0.0, delay, 0.25)
 
 	_last_bets.clear()
@@ -761,6 +797,7 @@ func _deal_cards() -> void:
 			var card: CardView = _mine[k] if slot == 0 else (_hole[slot][k] if slot > 0 else null)
 			if card != null and card.visible:
 				card.fly_from(origin, order * 0.06, 0.26)
+				Sfx.play(Sfx.CARD, order * 0.06 + 0.05, -6.0)
 				order += 1
 
 

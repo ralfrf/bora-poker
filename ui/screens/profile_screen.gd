@@ -11,7 +11,9 @@ const AvatarButton := preload("res://ui/widgets/avatar_button.gd")
 const SeatView := preload("res://ui/widgets/seat_view.gd")
 const Logo := preload("res://ui/widgets/logo.gd")
 
-const AVATAR_D: float = 52.0
+const AvatarPaint := preload("res://ui/widgets/paint.gd")
+
+const AVATAR_D: float = 40.0
 
 var profile: Profile = null
 var first: bool = true
@@ -35,8 +37,7 @@ func _init(owner_profile: Profile, first_time: bool) -> void:
 
 
 func _build() -> void:
-	_avatar = profile.avatar if Profile.AVATAR_CHOICES.has(profile.avatar) \
-		else Profile.AVATAR_CHOICES[0]
+	_avatar = clampi(profile.avatar, 0, AvatarPaint.AVATAR_COUNT - 1)
 	_logo = Logo.new()
 	add_child(_logo)
 	_title = Label.new()
@@ -61,10 +62,10 @@ func _build() -> void:
 	_avatar_label.text = "Avatar"
 	add_child(_avatar_label)
 	_avatars = HBoxContainer.new()
-	_avatars.add_theme_constant_override("separation", 8)
+	_avatars.add_theme_constant_override("separation", 2)
 	add_child(_avatars)
 	var group: ButtonGroup = ButtonGroup.new()
-	for index: int in Profile.AVATAR_CHOICES:
+	for index: int in AvatarPaint.AVATAR_COUNT:
 		var button: AvatarButton = AvatarButton.new(index, AVATAR_D)
 		button.button_group = group
 		button.button_pressed = index == _avatar

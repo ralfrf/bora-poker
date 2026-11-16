@@ -94,18 +94,33 @@ static func chip_stack(ci: CanvasItem, base: Vector2, radius: float,
 				maxf(radius * 0.07, 0.7), Color(1, 1, 1, 0.3))
 
 
-## Avatar provisório: disco colorido com sombreado de esfera e um emblema simples.
+## Os 10 avatares (SPEC 11.3): cada um com cor e emblema próprios. As cores vêm do
+## tema (avatar_0 a avatar_9); ink_9 é a tinta escura dos fundos claros.
+const AVATAR_COUNT: int = 10
+## Nome de cada avatar, na ordem dos índices (para quem lê o código).
+const AVATAR_NAMES: Array[String] = ["Espadas", "Copas", "Ouros", "Paus", "Coroa",
+	"Estrela", "Raio", "Lua", "Sol", "Âncora"]
+
+
+## As cores dos avatares, lidas do tema.
+static func avatar_colors(control: Control) -> Array[Color]:
+	var colors: Array[Color] = []
+	for i in AVATAR_COUNT:
+		colors.append(control.get_theme_color("avatar_%d" % i, "Tokens"))
+	return colors
+
+
+## Avatar: disco com sombreado de esfera e o emblema no meio. shape 1 desenha um
+## quadrado arredondado em vez do disco.
 static func avatar(ci: CanvasItem, rect: Rect2, index: int, colors: Array[Color],
 		shape: int, radius: float) -> void:
-	var color_index: int = index % colors.size()
-	var emblem: int = index % 6
-	# A estrela no vermelho saiu a pedido do dono; no lugar, espadas no dourado.
-	if emblem == 0 and color_index == 0:
-		emblem = 5
-		color_index = 4 % colors.size()
-	var fill: Color = colors[color_index]
-	var ink: Color = Color(1, 1, 1, 0.96) if fill.get_luminance() < 0.6 \
-		else Color(0.06, 0.08, 0.1, 0.9)
+	var kind: int = posmod(index, AVATAR_COUNT)
+	var fill: Color = colors[kind % colors.size()]
+	var light: bool = fill.get_luminance() >= 0.6
+	var ink: Color = Color(0.08, 0.09, 0.12, 0.92) if light else Color(1, 1, 1, 0.96)
+	# Ouros no marfim, como numa carta: tinta vermelha.
+	if kind == 2 and light:
+		ink = Color(0.78, 0.13, 0.18)
 	var center: Vector2 = rect.get_center()
 	var size: float = minf(rect.size.x, rect.size.y)
 	if shape == 0:
@@ -116,34 +131,82 @@ static func avatar(ci: CanvasItem, rect: Rect2, index: int, colors: Array[Color]
 	else:
 		gradient_rect(ci, rect, radius, fill.lightened(0.15), fill.darkened(0.25))
 	var s: float = size * 0.42
-	_emblem(ci, emblem, center + Vector2(0, s * 0.06), s, Color(0, 0, 0, 0.28))
-	_emblem(ci, emblem, center, s, ink)
+	_emblem(ci, kind, center + Vector2(0, s * 0.07), s, Color(0, 0, 0, 0.28))
+	_emblem(ci, kind, center, s, ink)
 
 
 static func _emblem(ci: CanvasItem, kind: int, center: Vector2, s: float,
 		ink: Color) -> void:
 	match kind:
-		0:
-			_polygon(ci, _star(center, s * 0.62, s * 0.26, 5), ink)
-		1:
-			_disc(ci, center, s * 0.3, ink)
-			for i in 8:
-				var a: float = TAU * i / 8.0
-				var d: Vector2 = Vector2(cos(a), sin(a))
-				ci.draw_line(center + d * s * 0.46, center + d * s * 0.62, ink, s * 0.12, true)
-		2:
+		0, 1, 2, 3:
+			# Os quatro naipes: espadas, copas, ouros e paus.
+			var suit_of: Array[int] = [3, 2, 1, 0]
+			suit(ci, suit_of[kind], center, s * 1.3, ink)
+		4:
+			# Coroa: faixa embaixo, três pontas com bolinhas.
+			_polygon(ci, PackedVector2Array([center + Vector2(-0.62, 0.42) * s,
+				center + Vector2(-0.66, -0.34) * s, center + Vector2(-0.3, 0.02) * s,
+				center + Vector2(0.0, -0.5) * s, center + Vector2(0.3, 0.02) * s,
+				center + Vector2(0.66, -0.34) * s, center + Vector2(0.62, 0.42) * s]), ink)
+			for tip: Vector2 in [Vector2(-0.66, -0.4), Vector2(0.0, -0.58), Vector2(0.66, -0.4)]:
+				_disc(ci, center + tip * s, s * 0.11, ink)
+		5:
+			_polygon(ci, _star(center + Vector2(0, s * 0.04), s * 0.66, s * 0.28, 5), ink)
+		6:
+			# Raio.
 			_polygon(ci, PackedVector2Array([center + Vector2(0.08, -0.6) * s,
 				center + Vector2(-0.36, 0.08) * s, center + Vector2(-0.02, 0.08) * s,
 				center + Vector2(-0.1, 0.6) * s, center + Vector2(0.36, -0.1) * s,
 				center + Vector2(0.02, -0.1) * s]), ink)
-		3:
-			_polygon(ci, PackedVector2Array([center + Vector2(-0.62, 0.42) * s,
-				center + Vector2(-0.16, -0.36) * s, center + Vector2(0.06, 0.0) * s,
-				center + Vector2(0.24, -0.2) * s, center + Vector2(0.62, 0.42) * s]), ink)
-		4:
-			_ring(ci, center, s * 0.4, s * 0.2, ink)
-		5:
-			_polygon(ci, _heart_points(center + Vector2(0, s * 0.1), s * 1.1, true), ink)
+		7:
+			_polygon(ci, _crescent(center, s * 0.58, Vector2(0.3, -0.14) * s, s * 0.5), ink)
+		8:
+			# Sol: disco e oito raios.
+			_disc(ci, center, s * 0.3, ink)
+			for i in 8:
+				var a: float = TAU * i / 8.0
+				var d: Vector2 = Vector2(cos(a), sin(a))
+				ci.draw_line(center + d * s * 0.44, center + d * s * 0.64, ink, s * 0.13, true)
+		9:
+			# Âncora: argola, haste, travessa e os braços curvos com pontas.
+			var w: float = s * 0.13
+			_ring(ci, center + Vector2(0, -0.5) * s, s * 0.13, w * 0.8, ink)
+			ci.draw_line(center + Vector2(0, -0.37) * s, center + Vector2(0, 0.56) * s, ink, w, true)
+			ci.draw_line(center + Vector2(-0.3, -0.16) * s, center + Vector2(0.3, -0.16) * s,
+				ink, w, true)
+			ci.draw_arc(center + Vector2(0, 0.06) * s, s * 0.5, PI * 0.12, PI * 0.88, 16,
+				ink, w, true)
+			for side: float in [-1.0, 1.0]:
+				var tip: Vector2 = center + Vector2(side * 0.5 * cos(PI * 0.12),
+					0.06 + 0.5 * sin(PI * 0.12)) * s
+				_polygon(ci, PackedVector2Array([tip + Vector2(side * 0.1, -0.2) * s,
+					tip + Vector2(side * 0.16, 0.06) * s, tip + Vector2(-side * 0.1, 0.0) * s]),
+					ink)
+
+
+## Lua crescente: o disco (center, outer) menos o disco deslocado (offset, inner).
+static func _crescent(center: Vector2, outer: float, offset: Vector2,
+		inner: float) -> PackedVector2Array:
+	var steps: int = 64
+	var outside: PackedVector2Array = PackedVector2Array()
+	var start: float = offset.angle()
+	for i in steps + 1:
+		var a: float = start + TAU * i / steps
+		var p: Vector2 = Vector2(cos(a), sin(a)) * outer
+		if p.distance_to(offset) > inner:
+			outside.append(center + p)
+	var inside: PackedVector2Array = PackedVector2Array()
+	for i in steps + 1:
+		var a: float = start + TAU * i / steps
+		var p: Vector2 = offset + Vector2(cos(a), sin(a)) * inner
+		if p.length() < outer:
+			inside.append(center + p)
+	if outside.is_empty() or inside.is_empty():
+		return PackedVector2Array()
+	if outside[-1].distance_to(inside[0]) > outside[-1].distance_to(inside[-1]):
+		inside.reverse()
+	outside.append_array(inside)
+	return outside
 
 
 ## Verso da carta: borda clara como numa carta de baralho, painel com degradê,

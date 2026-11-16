@@ -16,12 +16,9 @@ func _init(index: int, diameter: float) -> void:
 	toggled.connect(func(_on: bool) -> void: queue_redraw())
 
 
-## As cores dos avatares, as mesmas dos lugares da mesa.
+## As cores dos avatares (as mesmas em todo o app).
 static func colors_of(ci: Control) -> Array[Color]:
-	var colors: Array[Color] = []
-	for i in 5:
-		colors.append(ci.get_theme_color("chip_%d" % ((i + 1) % 5), T))
-	return colors
+	return Paint.avatar_colors(ci)
 
 
 func _draw() -> void:

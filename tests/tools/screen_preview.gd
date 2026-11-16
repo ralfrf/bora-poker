@@ -2,7 +2,8 @@ extends Control
 ## Abre uma tela do app com dados de exemplo, para as fotos (tests/tools/shot.gd).
 ## Nada é gravado no perfil de verdade.
 ##   --screen=profile | profile_edit | home | setup | setup_t | game | showdown |
-##            rebuy | result | result_t | live
+##            rebuy | watching | ranking | result | result_t | live | settings |
+##            help | rules
 ##   --seed=N  (game e showdown: muda a mesa sorteada)
 
 const Profile := preload("res://ui/app/profile.gd")
@@ -14,6 +15,8 @@ const HomeScreen := preload("res://ui/screens/home_screen.gd")
 const OfflineSetupScreen := preload("res://ui/screens/offline_setup_screen.gd")
 const GameScreen := preload("res://ui/screens/game_screen.gd")
 const ResultScreen := preload("res://ui/screens/result_screen.gd")
+const SettingsScreen := preload("res://ui/screens/settings_screen.gd")
+const HelpScreen := preload("res://ui/screens/help_screen.gd")
 
 const FAST: Dictionary = {"hand_gap_ms": 0, "showdown_gap_ms": 0, "bot_min_ms": 0,
 	"bot_max_ms": 0, "bot_evaluations": 120}
@@ -34,7 +37,7 @@ func _ready() -> void:
 	var profile: Profile = Profile.new()
 	profile.load_file("user://perfil_foto.cfg")
 	profile.nick = "Rafa"
-	profile.avatar = 1
+	profile.avatar = 4
 	profile.offline = {"seats": seats}
 	var screen: Control = null
 	match screen_name:
@@ -52,6 +55,14 @@ func _ready() -> void:
 			screen = OfflineSetupScreen.new(profile)
 		"game", "showdown", "rebuy":
 			screen = _game(screen_name, seats)
+		"settings":
+			screen = SettingsScreen.new(profile)
+		"help":
+			screen = HelpScreen.new(0)
+		"rules":
+			screen = HelpScreen.new(1)
+		"ranking":
+			screen = _game("game", seats, false, true)
 		"watching":
 			# Recompra recusada por enquanto: assistindo, com "Voltar ao jogo".
 			screen = _game("rebuy", seats, true)
@@ -68,7 +79,7 @@ func _ready() -> void:
 
 
 ## Partida de verdade, com relógio manual: anda até a situação pedida e congela.
-func _game(kind: String, seats: int, watching: bool = false) -> Control:
+func _game(kind: String, seats: int, watching: bool = false, ranking: bool = false) -> Control:
 	var clock: Clock = Clock.new(true)
 	var game: OfflineGame = OfflineGame.new(clock, FAST, func() -> int:
 		_seed += 1
@@ -113,7 +124,9 @@ func _game(kind: String, seats: int, watching: bool = false) -> Control:
 	screen.ready.connect(func() -> void:
 		screen.set_process(false)
 		screen.get_child(0).set("_watching", watching)
-		screen.get_child(0).call("render", target), CONNECT_DEFERRED)
+		screen.get_child(0).call("render", target)
+		if ranking:
+			screen.open_ranking(), CONNECT_DEFERRED)
 	return screen
 
 

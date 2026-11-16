@@ -113,11 +113,8 @@ func _draw() -> void:
 	var metal: Color = accent if winner else get_theme_color("rail_hi", T)
 	draw_circle(center, r + 2.5, metal.darkened(0.45), true, -1.0, true)
 	draw_arc(center, r + 1.3, PI * 1.05, PI * 1.95, 24, metal.lightened(0.25), 2.2, true)
-	var colors: Array[Color] = []
-	for i in 5:
-		colors.append(get_theme_color("chip_%d" % ((i + 1) % 5), T))
 	Paint.avatar(self, Rect2(center - Vector2.ONE * r, Vector2.ONE * AVATAR),
-		int(data.get("avatar", 0)), colors, 0, 0.0)
+		int(data.get("avatar", 0)), Paint.avatar_colors(self), 0, 0.0)
 	if turn:
 		Paint.timer_ring(self, center, r + 2.5, 3.5, fraction, ring_color, Color(0, 0, 0, 0.55))
 	elif winner:

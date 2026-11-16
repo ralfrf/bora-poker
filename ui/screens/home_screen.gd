@@ -1,15 +1,20 @@
 extends "res://ui/screens/screen.gd"
 ## Início (SPEC 11.1): os três modos, com o último usado já escolhido. Mesmo Wi-Fi e
-## À distância ainda aparecem como "Em breve". No alto da coluna, o seu perfil.
+## À distância ainda aparecem como "Em breve". No alto da coluna, o seu perfil e, logo
+## abaixo, Configurações e Ajuda (a Loja só aparece quando for liberada).
 
 signal play(mode: String)
 signal edit_profile
+signal open_settings
+signal open_help
+signal open_shop
 
 const Profile := preload("res://ui/app/profile.gd")
 const ModeCard := preload("res://ui/widgets/mode_card.gd")
 const Logo := preload("res://ui/widgets/logo.gd")
 const Paint := preload("res://ui/widgets/paint.gd")
 const AvatarButton := preload("res://ui/widgets/avatar_button.gd")
+const ShopScreen := preload("res://ui/screens/shop_screen.gd")
 
 ## Modos prontos nesta versão.
 const READY: Array[String] = [Profile.MODE_OFFLINE]
@@ -55,6 +60,7 @@ var _subtitle: Label = null
 var _cards: Dictionary = {}   # modo -> ModeCard
 var _chip: ProfileChip = null
 var _play: Button = null
+var _links: Array[Button] = []
 var _mode: String = Profile.MODE_OFFLINE
 
 
@@ -89,6 +95,18 @@ func _build() -> void:
 	_chip.avatar = profile.avatar
 	_chip.pressed.connect(func() -> void: edit_profile.emit())
 	add_child(_chip)
+	var links: Array = [["Configurações", open_settings], ["Ajuda", open_help]]
+	if ShopScreen.VISIBLE:
+		links.append(["Loja", open_shop])
+	for link: Array in links:
+		var button: Button = Button.new()
+		button.text = link[0]
+		button.theme_type_variation = "QuietButton"
+		button.focus_mode = Control.FOCUS_NONE
+		var target: Signal = link[1]
+		button.pressed.connect(func() -> void: target.emit())
+		add_child(button)
+		_links.append(button)
 	_play = action_button("Jogar", true)
 	_play.pressed.connect(func() -> void: play.emit(_mode))
 	add_child(_play)
@@ -109,4 +127,6 @@ func _layout() -> void:
 		place(_cards[mode], Rect2(b.position.x + i * (w + gap), top, w, h))
 		i += 1
 	place(_chip, Rect2(col.position.x, col.position.y, col.size.x, 46))
+	for k in _links.size():
+		place(_links[k], Rect2(col.position.x, col.position.y + 56.0 + k * 46.0, col.size.x, 40))
 	place(_play, Rect2(col.position.x, col.end.y - BUTTON_H, col.size.x, BUTTON_H))

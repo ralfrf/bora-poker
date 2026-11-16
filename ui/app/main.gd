@@ -1,7 +1,8 @@
 extends Control
 ## O app: aplica o tema, lê o perfil e leva de uma tela à outra (SPEC 11.1).
 ## Primeira abertura (apelido e avatar) → início → mesa offline → partida → placar →
-## início. O botão "voltar" do Android passa pela tela aberta.
+## (anúncio entre partidas, hoje vazio) → início. Do início também se abrem
+## configurações e ajuda. O botão "voltar" do Android passa pela tela aberta.
 
 const UiTheme := preload("res://ui/theme/ui_theme.gd")
 const Profile := preload("res://ui/app/profile.gd")
@@ -12,6 +13,10 @@ const HomeScreen := preload("res://ui/screens/home_screen.gd")
 const OfflineSetupScreen := preload("res://ui/screens/offline_setup_screen.gd")
 const GameScreen := preload("res://ui/screens/game_screen.gd")
 const ResultScreen := preload("res://ui/screens/result_screen.gd")
+const SettingsScreen := preload("res://ui/screens/settings_screen.gd")
+const HelpScreen := preload("res://ui/screens/help_screen.gd")
+const ShopScreen := preload("res://ui/screens/shop_screen.gd")
+const Ads := preload("res://ui/app/ads.gd")
 
 const FADE: float = 0.14
 
@@ -62,6 +67,15 @@ func _show_home() -> void:
 	var screen: HomeScreen = HomeScreen.new(profile)
 	screen.edit_profile.connect(_show_profile.bind(false))
 	screen.play.connect(_on_mode)
+	screen.open_settings.connect(func() -> void: _show_simple(SettingsScreen.new(profile)))
+	screen.open_help.connect(func() -> void: _show_simple(HelpScreen.new()))
+	screen.open_shop.connect(func() -> void: _show_simple(ShopScreen.new()))
+	_show(screen)
+
+
+## Telas que só voltam para o início (configurações, ajuda e loja).
+func _show_simple(screen: Control) -> void:
+	screen.connect("back", _show_home)
 	_show(screen)
 
 
@@ -90,6 +104,8 @@ func _start_game(choice: Dictionary) -> void:
 
 func _show_result(final: Dictionary, members: Array, my_id: String) -> void:
 	var screen: ResultScreen = ResultScreen.new(final, members, my_id)
-	screen.again.connect(func() -> void: _start_game(_last_choice))
-	screen.home.connect(_show_home)
+	# O anúncio de tela cheia, quando existir, passa aqui: entre uma partida e outra.
+	screen.again.connect(func() -> void:
+		Ads.interstitial(func() -> void: _start_game(_last_choice)))
+	screen.home.connect(func() -> void: Ads.interstitial(_show_home))
 	_show(screen)
