@@ -1,0 +1,483 @@
+extends Control
+## A mesa deitada para até 9: desenha uma mensagem `state` do protocolo (SPEC 9.1).
+## Mesa oval à esquerda, com você embaixo e os adversários ao redor; à direita, uma
+## coluna estreita com o espaço reservado do anúncio no alto (longe dos botões) e os
+## três botões embaixo, ao alcance do polegar. O painel de aposta abre ao lado deles. Não fala com o servidor:
+## quem usa a mesa liga o sinal `acted` e chama render() a cada `state`.
+
+signal acted(action: String, amount: int)
+
+const Money := preload("res://engine/money.gd")
+const CardView := preload("res://ui/widgets/card_view.gd")
+const SeatView := preload("res://ui/widgets/seat_view.gd")
+const AmountView := preload("res://ui/widgets/amount_view.gd")
+const TableFelt := preload("res://ui/widgets/table_felt.gd")
+const ActionBar := preload("res://ui/widgets/action_bar.gd")
+const T: String = "Tokens"
+
+const AdSlot := preload("res://ui/widgets/ad_slot.gd")
+const BoardMarks := preload("res://ui/widgets/board_marks.gd")
+
+const BOARD_CARD: Vector2 = Vector2(44, 62)
+const MY_CARD: Vector2 = Vector2(50, 70)
+const THEIR_BACK: Vector2 = Vector2(14, 20)
+const THEIR_FACE: Vector2 = Vector2(30, 42)
+const MARGIN: float = 12.0
+const COLUMN_W: float = 136.0
+const SHEET_W: float = 248.0
+## Distância mínima entre o anúncio e o botão mais alto (regra das lojas).
+const AD_GAP: float = 48.0
+const BAR_H: float = 52.0     # linha dos três botões; os atalhos abrem por cima
+## Ângulo (graus, 0 à direita, 90 embaixo) de cada posição em volta da mesa.
+## As do topo (4, 5 e 9) ficam numa linha reta, lado a lado.
+const SLOT_ANGLES: Array[float] = [90.0, 142.0, 180.0, 212.0, 255.0, 285.0, 328.0, 0.0,
+	38.0, 270.0]
+
+## Posições dos adversários, no sentido horário a partir da sua esquerda: 1 embaixo à
+## esquerda, 2 meio, 3 alto, 4 e 5 no topo, 6 a 8 descendo pela direita, e 9 no topo
+## ao centro (só para mesas com número ímpar de adversários no topo).
+## Para cada número de lugares, quais posições ficam ocupadas.
+const SLOTS: int = 10
+const SLOT_MAP: Dictionary = {
+	2: [9], 3: [3, 6], 4: [2, 9, 7], 5: [2, 4, 5, 7], 6: [1, 3, 9, 6, 8],
+	7: [1, 2, 4, 5, 7, 8], 8: [1, 2, 3, 9, 6, 7, 8], 9: [1, 2, 3, 4, 5, 6, 7, 8],
+}
+const ACTION_TAGS: Dictionary = {
+	"fold": "Desistiu", "check": "Passou", "call": "Pagou", "bet": "Apostou",
+	"raise": "Aumentou",
+}
+
+var _felt: TableFelt = null
+var _info: Label = null
+var _seats: Dictionary = {}     # posição -> SeatView
+var _hole: Dictionary = {}      # posição -> [CardView, CardView]
+var _bets: Dictionary = {}      # posição -> AmountView
+var _board: Array[CardView] = []
+var _pot: AmountView = null
+var _mine: Array[CardView] = []
+var _bar: ActionBar = null
+var _waiting: Label = null
+var _ad: AdSlot = null
+var _marks: BoardMarks = null
+
+var _state: Dictionary = {}
+var _seat_count: int = 8
+var _my_seat: int = -1
+var _tags: Dictionary = {}       # lugar -> texto da última ação
+var _turn_total_ms: int = 0
+var _turn_left_ms: int = -1
+var _turn_seat: int = -1
+
+
+func _ready() -> void:
+	_felt = TableFelt.new()
+	_felt.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(_felt)
+	_ad = AdSlot.new()
+	add_child(_ad)
+	_info = Label.new()
+	_info.theme_type_variation = "SmallLabel"
+	_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	add_child(_info)
+	_marks = BoardMarks.new()
+	_marks.card = BOARD_CARD
+	add_child(_marks)
+	for i in 5:
+		var card: CardView = CardView.new()
+		card.size = BOARD_CARD
+		add_child(card)
+		_board.append(card)
+	_pot = AmountView.new()
+	_pot.big = true
+	add_child(_pot)
+	for slot in SLOTS:
+		if slot > 0:
+			var pair: Array[CardView] = []
+			for k in 2:
+				var card: CardView = CardView.new()
+				card.size = THEIR_BACK
+				add_child(card)
+				pair.append(card)
+			_hole[slot] = pair
+		var seat: SeatView = SeatView.new()
+		add_child(seat)
+		_seats[slot] = seat
+		var bet: AmountView = AmountView.new()
+		bet.stack = true
+		add_child(bet)
+		_bets[slot] = bet
+	for k in 2:
+		var card: CardView = CardView.new()
+		card.size = MY_CARD
+		card.pivot_offset = Vector2(MY_CARD.x / 2.0, MY_CARD.y)
+		card.rotation_degrees = -4.0 if k == 0 else 4.0
+		add_child(card)
+		_mine.append(card)
+	_bar = ActionBar.new()
+	_bar.acted.connect(func(action: String, amount: int) -> void: acted.emit(action, amount))
+	_bar.sheet_toggled.connect(func(_open: bool) -> void: _place_bar())
+	add_child(_bar)
+	add_child(_bar.sheet)
+	_waiting = Label.new()
+	_waiting.theme_type_variation = "DimLabel"
+	_waiting.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	add_child(_waiting)
+	resized.connect(_layout)
+	_layout()
+	render(_state)
+
+
+var _safe_seen: Rect2i = Rect2i()
+var _safe_check: float = 0.0
+
+
+func _process(delta: float) -> void:
+	_safe_check -= delta
+	if _safe_check <= 0.0 and OS.has_feature("mobile"):
+		_safe_check = 0.5
+		var safe: Rect2i = DisplayServer.get_display_safe_area()
+		if safe != _safe_seen:
+			_safe_seen = safe
+			_layout()
+	if _turn_left_ms > 0 and _turn_total_ms > 0:
+		_turn_left_ms = maxi(0, _turn_left_ms - int(delta * 1000.0))
+		var slot: int = _slot_of(_turn_seat)
+		if slot >= 0:
+			_seats[slot].set_fraction(float(_turn_left_ms) / _turn_total_ms)
+
+
+## Desenha uma mensagem `state`.
+func render(state: Dictionary) -> void:
+	_state = state
+	if not is_node_ready() or state.is_empty():
+		return
+	var room: Dictionary = state.get("room", {})
+	var table: Dictionary = state.get("table", {})
+	var you: Dictionary = state.get("you", {})
+	_seat_count = int(room.get("options", {}).get("seats", 9))
+	_my_seat = int(you.get("seat", -1))
+	_note_events(state.get("events", []), table)
+	_layout()
+
+	var members: Dictionary = {}
+	for member: Dictionary in room.get("members", []):
+		if int(member.get("seat", -1)) >= 0:
+			members[int(member["seat"])] = member
+	var seats: Dictionary = {}
+	for entry: Dictionary in table.get("seats", []):
+		seats[int(entry["seat"])] = entry
+	var live: bool = table.get("live", false)
+	var to_act: int = int(table.get("to_act", -1))
+	var winners: Dictionary = {}
+	for payout: Dictionary in table.get("result", {}).get("payouts", []):
+		winners[int(payout.get("seat", -1))] = true
+
+	if to_act != _turn_seat or int(table.get("turn_ms", -1)) > _turn_left_ms + 400:
+		_turn_total_ms = maxi(int(table.get("turn_ms", -1)), 0)
+		if _turn_total_ms > 0:
+			_turn_total_ms = maxi(_turn_total_ms,
+				int(room.get("options", {}).get("turn_seconds", 0)) * 1000)
+	_turn_seat = to_act
+	_turn_left_ms = int(table.get("turn_ms", -1))
+
+	for slot in SLOTS:
+		var seat_view: SeatView = _seats[slot]
+		var seat_index: int = _seat_at(slot)
+		var bet_view: AmountView = _bets[slot]
+		var used: bool = seat_index >= 0
+		seat_view.visible = used
+		bet_view.visible = false
+		if slot > 0:
+			for card: CardView in _hole[slot]:
+				card.visible = false
+		if not used:
+			continue
+		var member: Dictionary = members.get(seat_index, {})
+		var entry: Dictionary = seats.get(seat_index, {})
+		if member.is_empty() and entry.is_empty():
+			seat_view.data = {"empty": true}
+			continue
+		var turn: bool = live and seat_index == to_act
+		var fraction: float = 1.0
+		if turn and _turn_total_ms > 0:
+			fraction = float(_turn_left_ms) / _turn_total_ms
+		seat_view.data = {
+			"nick": member.get("nick", ""), "avatar": member.get("avatar", 0),
+			"stack": entry.get("stack", 0), "turn": turn, "fraction": fraction,
+			"folded": entry.get("folded", false), "all_in": entry.get("all_in", false),
+			"dealer": seat_index == int(table.get("button", -1)),
+			"tag": _tags.get(seat_index, ""), "winner": winners.has(seat_index),
+			"away": member.get("away", false),
+		}
+		var bet: int = int(entry.get("bet", 0))
+		if live and bet > 0:
+			bet_view.amount = bet
+			bet_view.visible = true
+			bet_view.place_at(_bet_point(slot))
+		if slot > 0 and entry.get("in_hand", false) and not entry.get("folded", false):
+			var cards: Array = entry.get("cards", [])
+			var pair: Array = _hole[slot]
+			for k in 2:
+				var card: CardView = pair[k]
+				card.card = int(cards[k]) if cards.size() == 2 else -1
+				card.visible = true
+			_place_hole(slot, _slot_point(slot))
+
+	var board: Array = table.get("board", [])
+	for i in 5:
+		_board[i].visible = i < board.size()
+		if i < board.size():
+			_board[i].card = int(board[i])
+	var pot: int = int(table.get("pot", 0))
+	if not live:
+		pot = 0
+		for p: Dictionary in table.get("result", {}).get("payouts", []):
+			pot += int(p.get("amount", 0))
+	_pot.visible = pot > 0
+	_pot.amount = pot
+	_pot.place_at(_pot_point())
+
+	var my_cards: Array = you.get("cards", [])
+	var my_entry: Dictionary = seats.get(_my_seat, {})
+	for k in 2:
+		_mine[k].visible = my_cards.size() == 2
+		if my_cards.size() == 2:
+			_mine[k].card = int(my_cards[k])
+			_mine[k].dimmed = my_entry.get("folded", false)
+
+	var legal: Dictionary = you.get("legal", {})
+	_bar.visible = not legal.is_empty()
+	_waiting.visible = legal.is_empty()
+	if not legal.is_empty():
+		_bar.show_legal(legal, int(table.get("pot", 0)), int(table.get("current_bet", 0)),
+			int(table.get("small_blind", 1)))
+	else:
+		_bar.close_sheet()
+		_waiting.text = _waiting_text(table, you, members)
+
+	var info: String = "Mão %d · Blinds %s / %s" % [int(table.get("hand", 0)),
+		Money.format(int(table.get("small_blind", 0))), Money.format(int(table.get("big_blind", 0)))]
+	_info.text = info
+
+
+## Abre a folha de aposta (usado nas fotos e pela própria barra).
+func open_bet_sheet() -> void:
+	_bar.open_sheet()
+
+
+func _waiting_text(table: Dictionary, you: Dictionary, members: Dictionary) -> String:
+	if _my_seat < 0:
+		return "Assistindo"
+	var to_act: int = int(table.get("to_act", -1))
+	if table.get("live", false) and to_act >= 0:
+		var nick: String = members.get(to_act, {}).get("nick", "")
+		return "Vez de %s" % nick if nick != "" else ""
+	return ""
+
+
+func _note_events(events: Array, table: Dictionary) -> void:
+	for event: Dictionary in events:
+		match String(event.get("type", "")):
+			"deal", "street":
+				_tags.clear()
+			"action":
+				var tag: String = ACTION_TAGS.get(event.get("action", ""), "")
+				_tags[int(event.get("seat", -1))] = tag
+
+
+# ------------------------------------------------------------------ posições
+
+
+func _slot_of(seat_index: int) -> int:
+	if seat_index < 0:
+		return -1
+	var me: int = maxi(_my_seat, 0)
+	var relative: int = (seat_index - me + _seat_count) % _seat_count
+	if relative == 0:
+		return 0
+	var slots: Array = SLOT_MAP.get(_seat_count, SLOT_MAP[9])
+	return int(slots[relative - 1]) if relative - 1 < slots.size() else -1
+
+
+func _seat_at(slot: int) -> int:
+	for seat_index in _seat_count:
+		if _slot_of(seat_index) == slot:
+			return seat_index
+	return -1
+
+
+## Área útil da tela, sem o furo da câmera, que no celular deitado fica num dos lados.
+## Só o lado da câmera perde a faixa; ao girar o celular, _process percebe a troca.
+func _content() -> Rect2:
+	var rect: Rect2 = Rect2(Vector2.ZERO, size)
+	if OS.has_feature("mobile"):
+		var safe: Rect2i = DisplayServer.get_display_safe_area()
+		var window: Vector2i = DisplayServer.window_get_size()
+		if window.x > 0 and window.y > 0:
+			var k: float = size.x / window.x
+			var left: float = safe.position.x * k
+			var right: float = maxf(window.x - safe.end.x, 0.0) * k
+			rect = Rect2(left, 0, size.x - left - right, size.y)
+	return rect
+
+
+func _column() -> Rect2:
+	var content: Rect2 = _content()
+	return Rect2(content.end.x - MARGIN - COLUMN_W, content.position.y + MARGIN, COLUMN_W,
+		content.size.y - MARGIN * 2.0)
+
+
+func _table_area() -> Rect2:
+	var content: Rect2 = _content()
+	return Rect2(content.position.x, content.position.y,
+		_column().position.x - MARGIN - content.position.x, content.size.y)
+
+
+func _felt_rect() -> Rect2:
+	var area: Rect2 = _table_area()
+	var w: float = area.size.x - 140.0
+	var h: float = minf(area.size.y - 130.0, w * 0.5)
+	var center: Vector2 = Vector2(area.get_center().x, area.position.y + area.size.y * 0.47)
+	return Rect2(center - Vector2(w, h) / 2.0, Vector2(w, h))
+
+
+func _table_center() -> Vector2:
+	return _felt_rect().get_center()
+
+
+## Centro do lugar em cada posição: numa elipse um pouco maior que o feltro, para as
+## placas ficarem apoiadas no aro. Você (posição 0) fica embaixo, à esquerda das suas
+## cartas.
+func _seat_point(slot: int) -> Vector2:
+	var felt: Rect2 = _felt_rect()
+	var center: Vector2 = felt.get_center()
+	if slot == 0:
+		return Vector2(center.x - 62.0, felt.end.y + 24.0)
+	if slot == 4 or slot == 5 or slot == 9:
+		var offsets: Dictionary = {4: -72.0, 5: 72.0, 9: 0.0}
+		return Vector2(center.x + offsets[slot], felt.position.y - 10.0)
+	var a: float = deg_to_rad(SLOT_ANGLES[slot])
+	var area: Rect2 = _table_area()
+	var rx: float = minf(felt.size.x / 2.0 + 14.0, center.x - area.position.x - SeatView.SIZE.x / 2.0 - 4.0)
+	var ry: float = felt.size.y / 2.0 + 22.0
+	return center + Vector2(cos(a) * rx, sin(a) * ry)
+
+
+## Centro do avatar de cada posição, em coordenadas da mesa.
+func _slot_point(slot: int) -> Vector2:
+	var seat: SeatView = _seats[slot]
+	return _seat_point(slot) - SeatView.SIZE / 2.0 + seat.avatar_center()
+
+
+func _side_of(slot: int) -> float:
+	if slot == 0:
+		return 1.0
+	var p: Vector2 = _seat_point(slot)
+	return 1.0 if p.x < _table_center().x - 1.0 else -1.0
+
+
+func _bet_point(slot: int) -> Vector2:
+	var center: Vector2 = _table_center()
+	var felt: Rect2 = _felt_rect()
+	if slot == 0:
+		return Vector2(center.x - 14.0, felt.end.y - 34.0)
+	if slot == 4 or slot == 5 or slot == 9:
+		var offsets: Dictionary = {4: -60.0, 5: 60.0, 9: 0.0}
+		return Vector2(center.x + offsets[slot], felt.position.y + 30.0)
+	if slot == 3 or slot == 6:
+		return _slot_point(slot) + Vector2(_side_of(slot) * 8.0, 38.0)
+	var a: float = deg_to_rad(SLOT_ANGLES[slot])
+	var p: Vector2 = center + Vector2(cos(a) * felt.size.x * 0.33, sin(a) * felt.size.y * 0.40)
+	if slot == 2 or slot == 7:
+		p.y += felt.size.y * 0.17
+	return p
+
+
+func _board_center() -> Vector2:
+	return _table_center() + Vector2(0, 2)
+
+
+func _pot_point() -> Vector2:
+	return _board_center() + Vector2(0, -BOARD_CARD.y / 2.0 - 24.0)
+
+
+func _my_center() -> Vector2:
+	var felt: Rect2 = _felt_rect()
+	return Vector2(felt.get_center().x + 46.0, felt.end.y + 12.0)
+
+
+## Cartas de um adversário: fechadas, aparecem pequenas atrás do avatar; abertas
+## (showdown), ficam na frente, maiores, acima do lugar (ou abaixo, nos lugares do alto).
+func _place_hole(slot: int, point: Vector2) -> void:
+	var pair: Array = _hole[slot]
+	var open: bool = pair[0].card >= 0
+	var seat: SeatView = _seats[slot]
+	for k in 2:
+		var card: CardView = pair[k]
+		var turn: float = -1.0 if k == 0 else 1.0
+		if open:
+			card.size = THEIR_FACE
+			card.rotation = 0.0
+			var below: bool = point.y < _table_center().y - 40.0
+			var y: float = point.y + 26.0 if below else point.y - 26.0 - THEIR_FACE.y
+			card.position = Vector2(point.x - THEIR_FACE.x + 2.0 + k * (THEIR_FACE.x - 4.0),
+				y).round()
+			move_child(card, seat.get_index() + 1)
+		else:
+			card.size = THEIR_BACK
+			card.pivot_offset = Vector2(THEIR_BACK.x / 2.0, THEIR_BACK.y)
+			card.rotation_degrees = turn * 12.0
+			card.position = (point + Vector2(-THEIR_BACK.x / 2.0 + turn * 5.0,
+				-THEIR_BACK.y - 12.0)).round()
+			if card.get_index() > seat.get_index():
+				move_child(card, seat.get_index())
+
+
+func _layout() -> void:
+	if _felt == null:
+		return
+	_felt.felt_rect = _felt_rect()
+	var column: Rect2 = _column()
+	var bar_h: float = _bar.get_combined_minimum_size().y
+	_ad.position = column.position
+	_ad.size = Vector2(column.size.x, maxf(column.size.y - bar_h - AD_GAP, 50.0))
+	var area: Rect2 = _table_area()
+	_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_info.position = area.position + Vector2(MARGIN, MARGIN - 2.0)
+	_info.size = Vector2(240, 20)
+	var board_center: Vector2 = _board_center()
+	var gap: float = 4.0
+	var total: float = BOARD_CARD.x * 5.0 + gap * 4.0
+	_marks.gap = gap
+	_marks.position = (board_center - Vector2(total, BOARD_CARD.y) / 2.0).round()
+	_marks.size = Vector2(total, BOARD_CARD.y)
+	for i in 5:
+		_board[i].position = (board_center + Vector2(-total / 2.0 + i * (BOARD_CARD.x + gap),
+			-BOARD_CARD.y / 2.0)).round()
+	_pot.place_at(_pot_point())
+	for slot in SLOTS:
+		var seat: SeatView = _seats[slot]
+		seat.side = _side_of(slot)
+		seat.position = (_seat_point(slot) - SeatView.SIZE / 2.0).round()
+		if _bets[slot].visible:
+			_bets[slot].place_at(_bet_point(slot))
+		if slot > 0:
+			_place_hole(slot, _slot_point(slot))
+	var my_center: Vector2 = _my_center()
+	for k in 2:
+		_mine[k].position = (my_center + Vector2(-MY_CARD.x + 6.0 + k * (MY_CARD.x - 12.0),
+			-MY_CARD.y / 2.0)).round()
+	_place_bar()
+	_waiting.position = Vector2(column.position.x, column.end.y - BAR_H * 2.0)
+	_waiting.size = Vector2(column.size.x, BAR_H * 2.0)
+
+
+## A barra cresce para cima quando os atalhos de aposta abrem.
+func _place_bar() -> void:
+	var column: Rect2 = _column()
+	var height: float = _bar.get_combined_minimum_size().y
+	_bar.size = Vector2(column.size.x, height)
+	_bar.position = Vector2(column.position.x, column.end.y - height)
+	var sheet_h: float = _bar.sheet.get_combined_minimum_size().y
+	_bar.sheet.size = Vector2(SHEET_W, sheet_h)
+	_bar.sheet.position = Vector2(column.position.x - MARGIN - SHEET_W, column.end.y - sheet_h)

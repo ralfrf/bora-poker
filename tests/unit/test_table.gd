@@ -127,7 +127,7 @@ func test_seating() -> void:
 	var table: Table = _classic(2)
 	assert_true(table.add_player(0, "outro") != "", "lugar ocupado")
 	assert_true(table.add_player(5, "j1") != "", "já está na mesa")
-	assert_true(table.add_player(8, "novo") != "", "só há 8 lugares")
+	assert_true(table.add_player(9, "novo") != "", "só há 9 lugares")
 	assert_true(table.add_player(-1, "novo") != "")
 	assert_true(table.add_player(5, "") != "")
 	assert_eq(table.add_player(7, "novo"), "")

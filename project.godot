@@ -12,8 +12,24 @@ config_version=5
 
 config/name="Bora Poker"
 config/description="Texas Hold'em com amigos e offline, sem dinheiro real."
-config/features=PackedStringArray("4.7", "Mobile")
+run/main_scene="res://ui/explore/table_preview.tscn"
+run/low_processor_mode=true
+config/features=PackedStringArray("4.7", "GL Compatibility")
+
+[display]
+
+window/size/viewport_width=800
+window/size/viewport_height=360
+window/size/window_width_override=915
+window/size/window_height_override=412
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=4
 
 [rendering]
 
-renderer/rendering_method="mobile"
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/canvas_textures/default_texture_filter=1
+anti_aliasing/quality/msaa_2d=0
+textures/vram_compression/import_etc2_astc=true

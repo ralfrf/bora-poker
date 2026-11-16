@@ -16,7 +16,7 @@ const TOURNAMENT: String = "tournament"
 
 const REBUY_UNLIMITED: int = -1
 const REBUY_LIMITS: Array[int] = [-1, 0, 1, 2, 3]
-const MAX_SEATS: int = 8
+const MAX_SEATS: int = 9
 const DEFAULT_STACK: int = 2000              ## clássico: 20,00
 const DEFAULT_TOURNAMENT_STACK: int = 3000   ## torneio: 30,00
 const DEFAULT_SMALL_BLIND: int = 10

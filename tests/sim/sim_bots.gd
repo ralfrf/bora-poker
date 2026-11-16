@@ -98,7 +98,7 @@ func _play_game() -> void:
 	var clock: Clock = Clock.new(true)
 	var server: Server = Server.new(transport, clock, {"room": ROOM_CONFIG}, _next_seed)
 	var tournament: bool = _games % 3 == 2
-	var seats: int = _rng.randi_range(2, 8)
+	var seats: int = _rng.randi_range(2, 9)
 	var human_count: int = mini(_rng.randi_range(1, 3), seats)
 	var bots: Array = []
 	for _i in _rng.randi_range(0 if human_count > 1 else 1, seats - human_count):

@@ -1,0 +1,8 @@
+Fontes do jogo, todas com a licença SIL Open Font License 1.1 (arquivos OFL_*.txt):
+
+- sora.ttf: Sora (variável, eixo de peso), do repositório oficial do Google Fonts,
+  https://github.com/google/fonts/tree/main/ofl/sora
+- inter.ttf: Inter (variável, eixos de peso e tamanho óptico), do mesmo repositório,
+  https://github.com/google/fonts/tree/main/ofl/inter
+
+Baixadas em 16/11/2026, sem alterações.
