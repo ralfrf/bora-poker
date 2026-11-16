@@ -86,8 +86,9 @@ func test_reaction_reaches_everyone_with_rate_limit() -> void:
 	room.handle(b, {"t": Protocol.REACT, "r": Protocol.REACTIONS.size()})
 	room.handle(b, {"t": Protocol.REACT, "r": "oi"})
 	assert_eq(_count(c, Protocol.REACTION), 2, "índice inválido não passa: sem texto livre")
-	# Sala cheia: quem chega assiste e não reage.
-	var d: String = _join(room, "Dani")
+	# Quem assiste (pediu na sala de espera) não reage.
+	var d: String = room.join({"nick": "Dani", "avatar": 0, "device": "dev-Dani"}, true)["id"]
+	room.announce()
 	assert_eq(room.members[d].seat, -1)
 	room.handle(d, {"t": Protocol.REACT, "r": 1})
 	assert_eq(_count(c, Protocol.REACTION), 2, "espectador não reage")
@@ -97,8 +98,9 @@ func test_spectator_sits_when_a_seat_opens() -> void:
 	var room: Room = _room({"turn_seconds": 0, "seats": 2})
 	var a: String = _join(room, "Ana")
 	var b: String = _join(room, "Bia")
-	var c: String = _join(room, "Caio")
-	assert_eq(room.members[c].seat, -1, "sala cheia: entra assistindo")
+	var c: String = room.join({"nick": "Caio", "avatar": 0, "device": "dev-Caio"}, true)["id"]
+	room.announce()
+	assert_eq(room.members[c].seat, -1, "pediu para assistir na sala de espera")
 	assert_eq(_last(c)["you"].get("can_sit"), false)
 	room.leave(b)
 	assert_eq(_last(c)["you"].get("can_sit"), true, "abriu vaga na sala de espera")
@@ -106,24 +108,25 @@ func test_spectator_sits_when_a_seat_opens() -> void:
 	assert_eq(room.members[c].seat, 1, "sentou no lugar livre")
 	assert_false(_last(c)["you"].has("can_sit"), "quem está sentado não recebe can_sit")
 	room.handle(a, {"t": Protocol.START})
-	# Em partida, sala fechada a novos: quem chega só assiste, mesmo com vaga.
+	# Em partida, sala fechada a novos: quem chega não entra, mesmo com vaga.
 	var room2: Room = _room({"turn_seconds": 0, "seats": 3})
 	var a2: String = _join(room2, "Ana")
 	_join(room2, "Bia")
 	room2.handle(a2, {"t": Protocol.START})
-	var d: String = room2.join({"nick": "Dani", "avatar": 0, "device": "dev-d"}, true)["id"]
-	room2.announce()
-	assert_eq(_last(d)["you"].get("can_sit"), false, "sala não aceita novos jogadores")
+	var d: Dictionary = room2.join({"nick": "Dani", "avatar": 0, "device": "dev-d"}, true)
+	assert_false(d["ok"], "sala não aceita novos jogadores: nem para assistir")
+	assert_eq(room2.members.size(), 2)
+	# "Manter sala aberta": quem chega senta direto, sem gastar recompra.
 	var room3: Room = _room({"turn_seconds": 0, "seats": 3, "keep_open": true})
 	var a3: String = _join(room3, "Ana")
 	_join(room3, "Bia")
 	room3.handle(a3, {"t": Protocol.START})
 	var e: String = room3.join({"nick": "Eva", "avatar": 0, "device": "dev-e"}, true)["id"]
 	room3.announce()
-	assert_eq(_last(e)["you"].get("can_sit"), true, "\"manter sala aberta\": pode sentar")
-	assert_eq(_last(e)["you"].get("sit_rebuy"), false, "gente nova não gasta recompra")
-	room3.handle(e, {"t": Protocol.SIT})
 	assert_true(room3.members[e].seat >= 0, "sentou com a partida em andamento")
+	assert_eq(room3.table.rebuys_of(e), 0, "gente nova não gasta recompra")
+	assert_false(room3.join({"nick": "Fábio", "avatar": 0, "device": "dev-f"})["ok"],
+		"sala cheia em partida: não entra")
 
 
 func test_forfeit_hand_folds_when_turn_comes() -> void:

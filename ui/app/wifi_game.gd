@@ -54,6 +54,8 @@ var link: Link = Link.CONNECTING
 var error_text: String = ""
 ## Saiu da sala por pedido próprio ou expulso ("left" ou "kicked").
 var left_reason: String = ""
+## A partida já começou e há lugar livre: a tela pergunta se quer entrar (confirm_join).
+var confirm_seat: bool = false
 ## O código da sala e o IP do anfitrião na rede.
 var code: String = ""
 var host_ip: String = ""
@@ -91,6 +93,7 @@ var _host_since: int = -1        ## quando este celular assumiu a sala de outro
 var _ws: WsClient = null
 var _joined_once: bool = false
 var _joining: bool = false
+var _pending_room: String = ""
 var _lost_at: int = -1
 var _retry_at: int = 0
 var _moving_to: String = ""      ## a sala está passando para o celular deste apelido
@@ -254,8 +257,25 @@ func _pick_room(rooms: Array) -> void:
 	if room_id != "" and target != room_id:
 		_fail("A sala foi encerrada.")
 		return
+	_pending_room = target
+	# Entrada nova numa partida em andamento com vaga: pergunta antes de sentar (pedido do
+	# dono, 16/11/2026). Sem vaga, o servidor recusa e o motivo aparece na lista de salas.
+	for room: Dictionary in rooms:
+		if (room_id == "" and str(room.get("id", "")) == target
+				and room.get("phase") == Protocol.PLAYING and bool(room.get("keep_open", false))
+				and int(room.get("players", 0)) < int(room.get("seats", 0))):
+			confirm_seat = true
+			return
+	confirm_join()
+
+
+## Convidado: confirma a entrada (depois da pergunta, ou direto).
+func confirm_join() -> void:
+	confirm_seat = false
+	if _pending_room == "" or link == Link.FAILED:
+		return
 	_joining = true
-	send({"t": Protocol.JOIN_ROOM, "room": target, "spectate": false})
+	send({"t": Protocol.JOIN_ROOM, "room": _pending_room, "spectate": false})
 
 
 # ---------------------------------------------------------------- a sala muda de celular

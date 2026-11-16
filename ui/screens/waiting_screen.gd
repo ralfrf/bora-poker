@@ -79,6 +79,8 @@ var _bot_buttons: Array[Button] = []
 var _status: Label = null
 var _start: Button = null
 var _dialog: Dialog = null
+## Mostrando a pergunta "Quer entrar e jogar?" (partida em andamento com vaga).
+var _asking_seat: bool = false
 var _picker: AvatarPicker = null
 var _seat_ids: Array[String] = []
 var _pending_kick: String = ""
@@ -192,6 +194,11 @@ func _process(delta: float) -> void:
 	if _game.link == WifiGame.Link.FAILED:
 		_finish(_game.error_text)
 		return
+	if _game.confirm_seat and not _asking_seat:
+		_asking_seat = true
+		_dialog.dismissable = false
+		_dialog.ask("A partida já começou", "Há lugar livre na mesa. Quer entrar e jogar?",
+			["Entrar", "Voltar"])
 	if _game.status_text() != _last_status:
 		_last_status = _game.status_text()
 		changed = true
@@ -390,6 +397,15 @@ func _ask_leave() -> void:
 
 
 func _on_dialog(index: int) -> void:
+	if _asking_seat:
+		_asking_seat = false
+		_dialog.dismissable = true
+		if index == 0:
+			_game.confirm_join()
+		else:
+			_game.leave()
+			_finish("")
+		return
 	if index != 0:
 		_pending_kick = ""
 		return
@@ -402,7 +418,10 @@ func _on_dialog(index: int) -> void:
 
 
 func go_back() -> bool:
-	if _picker.visible:
+	if _asking_seat:
+		_dialog.visible = false
+		_on_dialog(1)
+	elif _picker.visible:
 		_picker.close()
 	elif _dialog.visible:
 		_dialog.visible = false

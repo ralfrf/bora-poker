@@ -146,14 +146,22 @@ func test_nick_cleanup_and_duplicates() -> void:
 	assert_eq(room.name, "Sala de Ana")
 
 
-func test_full_room_seats_as_spectator() -> void:
+func test_full_room_refuses_newcomer() -> void:
 	var room: Room = _room({"seats": 2})
 	var a: String = _join(room, "A")
 	var b: String = _join(room, "B")
-	var c: String = _join(room, "C")
 	assert_eq(room.members[a].seat, 0)
 	assert_eq(room.members[b].seat, 1)
-	assert_eq(room.members[c].seat, -1, "sem lugar, assiste")
+	var c: Dictionary = room.join({"nick": "C", "avatar": 0, "device": ""})
+	assert_false(c["ok"], "sem lugar, não entra")
+	assert_eq(c["error"], "a sala está cheia")
+	assert_eq(room.members.size(), 2, "o recusado não fica na sala")
+	var d: Dictionary = room.join({"nick": "D", "avatar": 0, "device": ""}, true)
+	assert_true(d["ok"] and room.members[d["id"]].seat == -1,
+		"na sala de espera, dá para pedir para assistir")
+	room.handle(a, {"t": Protocol.START})
+	var e: Dictionary = room.join({"nick": "E", "avatar": 0, "device": ""}, true)
+	assert_false(e["ok"], "em partida, pedir para assistir não vale")
 
 
 # ---------------------------------------------------------------- começar e vez

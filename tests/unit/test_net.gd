@@ -287,6 +287,47 @@ func test_wifi_match_with_two_guests() -> void:
 	caio2.shutdown()
 
 
+## Partida em andamento: com vaga, o app pergunta antes de sentar; cheia, a entrada é
+## recusada (só assiste quem já estava na sala).
+func test_join_in_progress_asks_first() -> void:
+	_seed = 4500
+	var host: WifiGame = WifiGame.new()
+	var options: Dictionary = {"format": "classic", "seats": 3, "turn_seconds": 0, "bots": [],
+		"keep_open": true}
+	var ok: bool = host.host("Ana", 1, "dev-a", options, FAST, _next_seed,
+		["127.0.0.1"] as Array[String], 0, TEST_UDP_PORT + 3)
+	assert_true(ok, "abriu a sala: " + host.error_text)
+	if not ok:
+		return
+	var bia: WifiGame = WifiGame.new()
+	bia.join("127.0.0.1", host.port, "Bia", 2, "dev-b")
+	var games: Array = [host, bia]
+	var step: Callable = func() -> void:
+		for game: WifiGame in games:
+			game.update()
+	assert_true(_spin(step, func() -> bool: return bia.my_id != "", 4000), "Bia entrou")
+	host.start()
+	_spin(step, func() -> bool: return bia.last_state.get("room", {}).get("phase") == "playing", 2000)
+	var davi: WifiGame = WifiGame.new()
+	davi.join("127.0.0.1", host.port, "Davi", 3, "dev-d")
+	games.append(davi)
+	assert_true(_spin(step, func() -> bool: return davi.confirm_seat, 4000), "o app pergunta")
+	_spin(step, func() -> bool: return false, 300)
+	assert_eq(davi.my_id, "", "sem resposta, não entra")
+	davi.confirm_join()
+	assert_true(_spin(step, func() -> bool: return davi.my_id != "", 4000), "Davi entrou")
+	assert_true(int(davi.last_state.get("you", {}).get("seat", -1)) >= 0, "sentado")
+	var eva: WifiGame = WifiGame.new()
+	eva.join("127.0.0.1", host.port, "Eva", 4, "dev-e")
+	games.append(eva)
+	assert_true(_spin(step, func() -> bool: return eva.link == WifiGame.Link.FAILED, 4000),
+		"sala cheia: não entra")
+	assert_false(eva.confirm_seat, "sem vaga, nem pergunta")
+	assert_eq(eva.error_text, "A sala está cheia.")
+	for game: WifiGame in games:
+		game.shutdown()
+
+
 ## O anfitrião sai no meio da partida: a sala passa para o convidado mais antigo, o outro
 ## reconecta nele e a partida segue.
 func test_host_leaves_and_room_moves() -> void:

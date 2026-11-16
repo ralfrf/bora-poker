@@ -182,20 +182,35 @@ func test_after_ten_minutes_comes_back_as_new_player() -> void:
 	room.tick()
 	assert_eq(room.table.cashbox.held(c), 0, "o prazo venceu")
 	var back: Dictionary = _join(room, "Caio", "dev-c")
-	assert_true(back["id"] != c, "é jogador novo")
-	assert_eq(room.members[back["id"]].seat, -1, "sala fechada a novos: fica assistindo")
+	assert_false(back["ok"], "é jogador novo, e a sala está fechada a novos")
+	assert_eq(back["error"], "a partida já começou e a sala não aceita novos jogadores")
+	assert_false(room.members.has(c))
 	assert_true(room.table.is_balanced())
 
 
-func test_spectator_drop_just_leaves() -> void:
+func test_spectator_drop() -> void:
 	var room: Room = _room({"seats": 2, "turn_seconds": 0})
 	var a: String = _join(room, "Ana", "dev-a")["id"]
 	_join(room, "Bia", "dev-b")
-	var s: String = _join(room, "Saulo", "dev-s")["id"]
+	var spy: Dictionary = {"nick": "Saulo", "avatar": 0, "device": "dev-s"}
+	var s: String = room.join(spy, true)["id"]
 	assert_eq(room.members[s].seat, -1)
 	room.drop_connection(s)
-	assert_false(room.members.has(s), "quem assistia sai na hora")
-	assert_true(a != "")
+	assert_false(room.members.has(s), "na sala de espera, quem assistia sai na hora")
+	s = room.join(spy, true)["id"]
+	room.handle(a, {"t": Protocol.START})
+	# Em partida, quem assiste não entraria de novo de fora: tem 60 s para voltar.
+	room.drop_connection(s)
+	_clock.advance(59000)
+	room.tick()
+	assert_true(room.members.has(s), "lugar de espectador guardado")
+	var back: Dictionary = _join(room, "Saulo", "dev-s")
+	assert_true(back["ok"] and back["resumed"] and back["id"] == s, "volta a assistir")
+	room.drop_connection(s)
+	_clock.advance(60000)
+	room.tick()
+	assert_false(room.members.has(s), "passados 60 s, sai")
+	assert_false(_join(room, "Saulo", "dev-s")["ok"], "sala cheia: não entra mais")
 
 
 func test_tournament_drop_keeps_seat_and_returns() -> void:
