@@ -1,0 +1,5 @@
+# Só entra na imagem o que o jogo sem tela precisa.
+*
+!project.godot
+!engine/
+!tests/
