@@ -718,6 +718,12 @@ func _animate(events: Array, table: Dictionary, board_count: int, live: bool) ->
 			"end":
 				ended = true
 			"action", "blind":
+				# Passar: duas batidas na mesa. Desistir: as cartas entregues.
+				match String(event.get("action", "")):
+					"check":
+						Sfx.play(Sfx.KNOCK)
+					"fold":
+						Sfx.play(Sfx.FOLD)
 				var slot: int = _slot_of(int(event.get("seat", -1)))
 				if int(event.get("amount", 0)) > 0 and slot >= 0 and not paid.has(slot):
 					paid.append(slot)
