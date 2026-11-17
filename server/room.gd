@@ -31,7 +31,7 @@ const FELTS: Array[String] = ["salao", "rubi", "safira", "perola"]
 const DEFAULT_FELT: String = "salao"
 const MAX_NICK: int = 16
 const DEFAULT_NICK: String = "Jogador"
-const AVATARS: int = 10
+const AVATARS: int = 29
 const AWAY_AFTER_TIMEOUTS: int = 2
 const MAX_STEPS_PER_TICK: int = 64
 ## Senha da sala, só à distância (SPEC 4.1 e 9.3): 4 dígitos, ou vazia.

@@ -8,6 +8,7 @@ extends Control
 ##            remote_password | remote_wake | remote_empty | remote_setup | remote_waiting
 ##   --seed=N  (game e showdown: muda a mesa sorteada)
 ##   --felt=rubi  (a mesa escolhida: telas de criar, sala de espera e partida offline)
+##   --avatar=N  (o avatar do perfil de exemplo)  --picker  (remote_waiting: abre a escolha de avatar)
 
 const Profile := preload("res://ui/app/profile.gd")
 const OfflineGame := preload("res://ui/app/offline_game.gd")
@@ -39,6 +40,8 @@ var _felt: String = "salao"
 func _ready() -> void:
 	var screen_name: String = "home"
 	var seats: int = 6
+	var avatar: int = 4
+	var picker: bool = false
 	for arg: String in OS.get_cmdline_user_args():
 		if arg.begins_with("--screen="):
 			screen_name = arg.get_slice("=", 1)
@@ -48,11 +51,15 @@ func _ready() -> void:
 			seats = int(arg.get_slice("=", 1))
 		elif arg.begins_with("--felt="):
 			_felt = arg.get_slice("=", 1)
+		elif arg.begins_with("--avatar="):
+			avatar = int(arg.get_slice("=", 1))
+		elif arg == "--picker":
+			picker = true
 	var profile: Profile = Profile.new()
 	profile.load_file("user://perfil_foto.cfg")
 	profile.felt = _felt
 	profile.nick = "Rafa"
-	profile.avatar = 4
+	profile.avatar = avatar
 	profile.offline = {"seats": seats}
 	var screen: Control = null
 	match screen_name:
@@ -112,6 +119,8 @@ func _ready() -> void:
 			screen = WaitingScreen.new(_remote_waiting(seats))
 	screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(screen)
+	if picker and screen.get("_picker") != null:
+		screen.get("_picker").call_deferred("open", avatar)
 	if screen_name.begins_with("servers"):
 		var probe: LoadProbe = screen.get("probe")
 		match screen_name:

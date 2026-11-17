@@ -1,5 +1,6 @@
 extends Control
-## Escolha de avatar por cima da tela (sala de espera): os 10 avatares em duas fileiras.
+## Escolha de avatar por cima da tela (sala de espera): os 10 grátis numa fileira e os
+## exclusivos embaixo, com o aviso do Beta.
 ## Tocar num escolhe e fecha; tocar fora fecha sem trocar.
 
 signal picked(avatar: int)
@@ -7,8 +8,8 @@ signal picked(avatar: int)
 const Paint := preload("res://ui/widgets/paint.gd")
 const AvatarButton := preload("res://ui/widgets/avatar_button.gd")
 
-const DIAMETER: float = 48.0
-const PER_ROW: int = 5
+const DIAMETER: float = 36.0
+const PER_ROW: int = 10
 
 var _panel: PanelContainer = null
 var _buttons: Array[AvatarButton] = []
@@ -27,13 +28,16 @@ func _init() -> void:
 	title.theme_type_variation = "TitleLabel"
 	title.text = "Seu avatar"
 	rows.add_child(title)
-	var grid: GridContainer = GridContainer.new()
-	grid.columns = PER_ROW
-	grid.add_theme_constant_override("h_separation", 6)
-	grid.add_theme_constant_override("v_separation", 6)
-	rows.add_child(grid)
+	var free: GridContainer = _grid(rows)
+	var hint: Label = Label.new()
+	hint.theme_type_variation = "SmallLabel"
+	hint.text = "Exclusivos: grátis no Beta. Depois, só na Loja."
+	hint.modulate = Color(1, 1, 1, 0.7)
+	rows.add_child(hint)
+	var exclusive: GridContainer = _grid(rows)
 	var group: ButtonGroup = ButtonGroup.new()
 	for index: int in Paint.AVATAR_COUNT:
+		var grid: GridContainer = free if index < Paint.FREE_AVATARS else exclusive
 		var button: AvatarButton = AvatarButton.new(index, DIAMETER)
 		button.button_group = group
 		button.pressed.connect(func() -> void:
@@ -41,6 +45,15 @@ func _init() -> void:
 			picked.emit(index))
 		grid.add_child(button)
 		_buttons.append(button)
+
+
+func _grid(rows: VBoxContainer) -> GridContainer:
+	var grid: GridContainer = GridContainer.new()
+	grid.columns = PER_ROW
+	grid.add_theme_constant_override("h_separation", 2)
+	grid.add_theme_constant_override("v_separation", 0)
+	rows.add_child(grid)
+	return grid
 
 
 func open(current: int) -> void:

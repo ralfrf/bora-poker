@@ -23,6 +23,8 @@ var _title: Label = null
 var _field: LineEdit = null
 var _hint: Label = null
 var _avatar_label: Label = null
+var _avatar_hint: Label = null
+var _avatar_scroll: ScrollContainer = null
 var _avatars: HBoxContainer = null
 var _preview_label: Label = null
 var _preview: SeatView = null
@@ -61,11 +63,23 @@ func _build() -> void:
 	_avatar_label.theme_type_variation = "SmallLabel"
 	_avatar_label.text = "Avatar"
 	add_child(_avatar_label)
+	# Os exclusivos vêm depois dos grátis, na mesma fileira que desliza.
+	_avatar_hint = Label.new()
+	_avatar_hint.theme_type_variation = "SmallLabel"
+	_avatar_hint.text = "Deslize para os exclusivos: grátis no Beta. Depois, só na Loja."
+	_avatar_hint.modulate = Color(1, 1, 1, 0.7)
+	add_child(_avatar_hint)
+	_avatar_scroll = ScrollContainer.new()
+	_avatar_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_avatar_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
+	add_child(_avatar_scroll)
 	_avatars = HBoxContainer.new()
 	_avatars.add_theme_constant_override("separation", 2)
-	add_child(_avatars)
+	_avatar_scroll.add_child(_avatars)
 	var group: ButtonGroup = ButtonGroup.new()
 	for index: int in AvatarPaint.AVATAR_COUNT:
+		if index == AvatarPaint.FREE_AVATARS:
+			_avatars.add_child(VSeparator.new())
 		var button: AvatarButton = AvatarButton.new(index, AVATAR_D)
 		button.button_group = group
 		button.button_pressed = index == _avatar
@@ -73,6 +87,8 @@ func _build() -> void:
 			_avatar = index
 			_refresh())
 		_avatars.add_child(button)
+		if index == _avatar:
+			_scroll_to.call_deferred(button)
 	_preview_label = Label.new()
 	_preview_label.theme_type_variation = "SmallLabel"
 	_preview_label.text = "Na mesa"
@@ -105,10 +121,11 @@ func _layout() -> void:
 	y += 58.0
 	place(_hint, Rect2(b.position.x + 2.0, y, w, 18))
 	y += 36.0
-	place(_avatar_label, Rect2(b.position.x + 2.0, y, w, 18))
+	place(_avatar_label, Rect2(b.position.x + 2.0, y, 60, 18))
+	place(_avatar_hint, Rect2(b.position.x + 62.0, y, col.position.x - b.position.x - 74.0, 18))
 	y += 18.0
-	_avatars.position = Vector2(b.position.x - 8.0, y).round()
-	_avatars.size = _avatars.get_combined_minimum_size()
+	var row_h: float = _avatars.get_combined_minimum_size().y
+	place(_avatar_scroll, Rect2(b.position.x - 8.0, y, col.position.x - b.position.x - 4.0, row_h))
 	place(_confirm, Rect2(col.position.x, col.end.y - BUTTON_H, col.size.x, BUTTON_H))
 	place(_cancel, Rect2(col.position.x, col.end.y - BUTTON_H * 2.0 - 8.0, col.size.x, BUTTON_H))
 	# A prévia fica na altura do campo do apelido: digita e já vê como fica.
@@ -116,6 +133,12 @@ func _layout() -> void:
 	place(_preview_label, Rect2(col.position.x, preview_y, col.size.x, 18))
 	_preview.position = Vector2(col.get_center().x - SeatView.SIZE.x / 2.0,
 		_field.position.y + 4.0).round()
+
+
+## Deixa o avatar escolhido à vista quando ele fica além da borda da fileira.
+func _scroll_to(button: Control) -> void:
+	if is_instance_valid(button) and _avatar_scroll.is_inside_tree():
+		_avatar_scroll.ensure_control_visible(button)
 
 
 func _refresh() -> void:

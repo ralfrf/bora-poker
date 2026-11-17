@@ -39,7 +39,14 @@ func test_settings_round_trip() -> void:
 
 func test_avatar_count_matches_server() -> void:
 	assert_eq(Paint.AVATAR_COUNT, Room.AVATARS, "a tela desenha todos os avatares do servidor")
-	assert_eq(Paint.AVATAR_NAMES.size(), Paint.AVATAR_COUNT)
+	assert_eq(Paint.AVATAR_NAMES.size(), Paint.FREE_AVATARS)
+	# A grade dos retratos tem uma casa para cada avatar exclusivo.
+	var photos: Image = Image.load_from_file(ProjectSettings.globalize_path(Paint.PHOTOS_PATH))
+	assert_true(photos != null, "imagem dos retratos presente")
+	var rows: int = ceili(float(Paint.PHOTO_AVATARS) / Paint.PHOTO_COLUMNS)
+	assert_eq(photos.get_width(), int(Paint.PHOTO_CELL) * Paint.PHOTO_COLUMNS)
+	assert_eq(photos.get_height(), int(Paint.PHOTO_CELL) * rows)
+	assert_true(Paint.is_photo(Paint.FREE_AVATARS) and not Paint.is_photo(Paint.FREE_AVATARS - 1))
 
 
 func test_sounds_are_synthesized() -> void:

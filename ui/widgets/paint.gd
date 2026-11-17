@@ -94,27 +94,55 @@ static func chip_stack(ci: CanvasItem, base: Vector2, radius: float,
 				maxf(radius * 0.07, 0.7), Color(1, 1, 1, 0.3))
 
 
-## Os 10 avatares (SPEC 11.3): cada um com cor e emblema próprios. As cores vêm do
-## tema (avatar_0 a avatar_9); ink_9 é a tinta escura dos fundos claros.
-const AVATAR_COUNT: int = 10
-## Nome de cada avatar, na ordem dos índices (para quem lê o código).
+## Os avatares (SPEC 11.3). Os 10 primeiros são grátis e desenhados em vetor, cada um
+## com cor e emblema próprios (cores do tema, avatar_0 a avatar_9). Os seguintes são os
+## exclusivos da Loja: retratos recortados de ui/avatars/fotos.png (grátis no Beta).
+const FREE_AVATARS: int = 10
+const PHOTO_AVATARS: int = 19
+const AVATAR_COUNT: int = FREE_AVATARS + PHOTO_AVATARS
+## Nome dos avatares grátis, na ordem dos índices (para quem lê o código).
 const AVATAR_NAMES: Array[String] = ["Espadas", "Copas", "Ouros", "Paus", "Coroa",
 	"Estrela", "Raio", "Lua", "Sol", "Âncora"]
+## Os retratos: grade de 5 colunas, 128 pixels por retrato.
+const PHOTOS_PATH: String = "res://ui/avatars/fotos.png"
+const PHOTO_COLUMNS: int = 5
+const PHOTO_CELL: float = 128.0
+
+static var _photos: Texture2D = null
+static var _photos_tried: bool = false
 
 
-## As cores dos avatares, lidas do tema.
+static func is_photo(index: int) -> bool:
+	return posmod(index, AVATAR_COUNT) >= FREE_AVATARS
+
+
+## A imagem dos retratos, carregada na primeira vez (null sem a importação do Godot,
+## como nos testes sem tela; aí o avatar sai em vetor).
+static func photos() -> Texture2D:
+	if not _photos_tried:
+		_photos_tried = true
+		if ResourceLoader.exists(PHOTOS_PATH):
+			_photos = load(PHOTOS_PATH) as Texture2D
+	return _photos
+
+
+## As cores dos avatares grátis, lidas do tema.
 static func avatar_colors(control: Control) -> Array[Color]:
 	var colors: Array[Color] = []
-	for i in AVATAR_COUNT:
+	for i in FREE_AVATARS:
 		colors.append(control.get_theme_color("avatar_%d" % i, "Tokens"))
 	return colors
 
 
-## Avatar: disco com sombreado de esfera e o emblema no meio. shape 1 desenha um
-## quadrado arredondado em vez do disco.
+## Avatar: disco com sombreado de esfera e o emblema no meio, ou o retrato recortado em
+## círculo. shape 1 desenha um quadrado arredondado em vez do disco.
 static func avatar(ci: CanvasItem, rect: Rect2, index: int, colors: Array[Color],
 		shape: int, radius: float) -> void:
 	var kind: int = posmod(index, AVATAR_COUNT)
+	if kind >= FREE_AVATARS and shape == 0 and photos() != null:
+		_photo(ci, rect, kind - FREE_AVATARS)
+		return
+	kind %= FREE_AVATARS
 	var fill: Color = colors[kind % colors.size()]
 	var light: bool = fill.get_luminance() >= 0.6
 	var ink: Color = Color(0.08, 0.09, 0.12, 0.92) if light else Color(1, 1, 1, 0.96)
@@ -133,6 +161,24 @@ static func avatar(ci: CanvasItem, rect: Rect2, index: int, colors: Array[Color]
 	var s: float = size * 0.42
 	_emblem(ci, kind, center + Vector2(0, s * 0.07), s, Color(0, 0, 0, 0.28))
 	_emblem(ci, kind, center, s, ink)
+
+
+## Retrato número photo recortado em círculo, com a borda suavizada por um fio escuro.
+static func _photo(ci: CanvasItem, rect: Rect2, photo: int) -> void:
+	var texture: Texture2D = photos()
+	var center: Vector2 = rect.get_center()
+	var r: float = minf(rect.size.x, rect.size.y) / 2.0
+	var tex_size: Vector2 = texture.get_size()
+	var cell: Vector2 = Vector2(photo % PHOTO_COLUMNS, photo / PHOTO_COLUMNS) * PHOTO_CELL
+	var steps: int = 48
+	var points: PackedVector2Array = PackedVector2Array()
+	var uvs: PackedVector2Array = PackedVector2Array()
+	for i in steps:
+		var d: Vector2 = Vector2.from_angle(TAU * i / steps)
+		points.append(center + d * r)
+		uvs.append((cell + (Vector2.ONE + d) * PHOTO_CELL / 2.0) / tex_size)
+	ci.draw_colored_polygon(points, Color.WHITE, uvs, texture)
+	ci.draw_arc(center, r - 0.5, 0, TAU, steps, Color(0, 0, 0, 0.45), 1.2, true)
 
 
 static func _emblem(ci: CanvasItem, kind: int, center: Vector2, s: float,
