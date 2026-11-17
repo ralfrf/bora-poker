@@ -349,7 +349,8 @@ func test_remote_game_room_gone_on_return() -> void:
 	assert_true(_spin(func() -> void:
 		host.tick()
 		ana.update(), func() -> bool: return ana.room_id != ""))
-	# O servidor reiniciou e perdeu a sala (a recuperação vem na parte D).
+	# O servidor reiniciou e perdeu a sala ainda na sala de espera: sem mão jogada, não
+	# há resumo para recriá-la (SPEC 9.4; a recuperação está em test_recovery.gd).
 	host.server.rooms.clear()
 	host.ws.drop((host.ws.get("_peers") as Dictionary).keys().max())
 	assert_true(_spin(func() -> void:

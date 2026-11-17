@@ -10,6 +10,10 @@ extends "res://ui/app/game_session.gd"
 ## Desiste depois de 2 minutos sem conseguir.
 ##
 ## A primeira conexão também insiste por 2 minutos: o servidor pode estar acordando.
+##
+## Entre as mãos o servidor manda o resumo assinado da sala (SPEC 9.4). Se o servidor
+## reiniciou e a sala sumiu da memória, a volta leva o resumo (resume_room) e o servidor
+## recria a sala; a mão que estava em andamento é cancelada (SPEC 6.6).
 
 const WsClient := preload("res://net/ws_client.gd")
 const Clock := preload("res://server/clock.gd")
@@ -28,6 +32,10 @@ const SILENCE_MS: int = 13000
 const CONNECT_MS: int = 15000
 ## Na saída, espera a resposta (e o placar, se a sala fechar) pela internet.
 const FLUSH_MS: int = 1500
+## Quanto tempo o aviso da sala recuperada fica na mesa.
+const NOTICE_MS: int = 8000
+const RESTORED_NOTICE: String = "O servidor reiniciou e a sala voltou. Se havia uma mão " \
+	+ "em andamento, ela foi cancelada e as apostas voltaram."
 
 var link: Link = Link.CONNECTING
 var url: String = ""
@@ -54,6 +62,8 @@ var _started: int = 0
 var _lost_at: int = -1
 var _retry_at: int = -1
 var _attempt: int = 0
+var _summary: String = ""       ## o último resumo assinado da sala (opaco para o app)
+var _notice_until: int = -1
 
 
 func _init(clock: Clock = null) -> void:
@@ -157,10 +167,15 @@ func _track(message: Dictionary) -> void:
 		Protocol.WELCOME:
 			_greeted = true
 			if room_id != "" and final.is_empty() and left_reason == "":
-				# Voltando depois de uma queda: a mesma sala, pelo código dela.
+				# Voltando depois de uma queda: a mesma sala, pelo código dela. Com o
+				# resumo, o servidor também consegue recriá-la se tiver reiniciado.
 				_resuming = true
-				send({"t": Protocol.JOIN_ROOM, "room": room_id, "spectate": false,
-					"password": password})
+				if _summary != "":
+					send({"t": Protocol.RESUME_ROOM, "room": room_id, "summary": _summary,
+						"password": password})
+				else:
+					send({"t": Protocol.JOIN_ROOM, "room": room_id, "spectate": false,
+						"password": password})
 			elif not _want.is_empty():
 				_send_want()
 			else:
@@ -171,8 +186,16 @@ func _track(message: Dictionary) -> void:
 			_joining = false
 			_resuming = false
 			_want = {}
+			if bool(message.get("restored", false)):
+				_notice_until = _clock.now_ms() + NOTICE_MS
+		Protocol.SUMMARY:
+			if str(message.get("room", "")) == room_id and final.is_empty():
+				_summary = str(message.get("s", ""))
 		Protocol.LEFT:
 			left_reason = str(message.get("reason", Protocol.R_LEFT))
+			_summary = ""
+		Protocol.CLOSED:
+			_summary = ""
 		Protocol.ERROR:
 			_on_error(message)
 
@@ -260,12 +283,16 @@ func status_text() -> String:
 			return "Conexão perdida. Reconectando…"
 		Link.CONNECTING:
 			return "Conectando ao servidor…"
+	if _resuming:
+		return "Voltando para a sala…"
+	if _notice_until >= 0 and _clock.now_ms() < _notice_until:
+		return RESTORED_NOTICE
 	return ""
 
 
 ## Enquanto reconecta, a mesa fica parada na tela (o que aparece já não vale).
 func waiting_host() -> bool:
-	return link == Link.RECONNECTING
+	return link == Link.RECONNECTING or _resuming
 
 
 func failure() -> String:

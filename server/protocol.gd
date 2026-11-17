@@ -22,14 +22,15 @@ const PING: String = "ping"                 ## {}: batimento, a cada 2 s na rede
 const RETURN_CHOICE: String = "return_choice"   ## {keep}: volta com as fichas de antes ou as iniciais
 const PROFILE: String = "profile"           ## {avatar}: troca o avatar (só na sala de espera)
 const REACT: String = "react"               ## {r}: reação (índice em REACTIONS), só quem está sentado
-# Reservada para a próxima etapa.
-const RESUME_ROOM: String = "resume_room"       ## etapa 5: devolver o resumo da sala
+const RESUME_ROOM: String = "resume_room"   ## {room, summary, password}: volta depois de um reinício do
+                                            ## servidor com o resumo assinado (SPEC 9.4); sala viva = join_room
 
 # Do servidor para o app.
 const WELCOME: String = "welcome"   ## {v, nick}
 const ROOMS: String = "rooms"       ## {rooms: [{id, name, format, seats, players, phase, keep_open,
                                     ##   owner, small_blind, big_blind, level_minutes, locked, open}]}
-const JOINED: String = "joined"     ## {room, you, resumed}: resumed = retomou o lugar de antes
+const JOINED: String = "joined"     ## {room, you, resumed, restored?}: resumed = retomou o lugar de antes;
+                                    ## restored = a sala foi recriada de um resumo (SPEC 9.4)
 const STATE: String = "state"       ## {room, table, you, events}: a sala e a mesa vistas por quem recebe.
                                     ## you.return_offer {before, initial, seat, can_initial}: oferta de volta (SPEC 6.2)
 const LEFT: String = "left"         ## {reason}: "left" ou "kicked"
@@ -40,8 +41,7 @@ const HANDS: String = "hands"       ## {hands}: as últimas mãos, da mais recen
 const MOVE: String = "move"         ## {ip, port, room, nick, snapshot?}: Wi-Fi, a sala passa para o celular de nick;
                                     ## só ele recebe o snapshot (com os códigos dos aparelhos)
 const REACTION: String = "reaction" ## {seat, r}: alguém reagiu; vai a todos, fora do state
-# Reservada para a próxima etapa.
-const SUMMARY: String = "summary"             ## etapa 5: resumo assinado
+const SUMMARY: String = "summary"   ## {room, s}: resumo assinado da sala, entre as mãos (server/summary.gd)
 
 # Comandos do dono (campo "cmd" de OWNER).
 const CMD_PAUSE: String = "pause"

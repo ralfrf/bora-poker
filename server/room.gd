@@ -34,6 +34,8 @@ const MAX_STEPS_PER_TICK: int = 64
 const PASSWORD_DIGITS: int = 4
 ## O placar mostra no máximo esse tanto de gente (SPEC 11.2).
 const SCORE_ROWS: int = 10
+## Senha que ninguém acerta (não são 4 dígitos): sala recriada sem saber a senha.
+const LOCKED: String = "trancada"
 
 ## Prazos e ajustes que não são opção da sala. As simulações zeram as esperas.
 const DEFAULT_CONFIG: Dictionary = {
@@ -126,6 +128,16 @@ var _notes: Array = []             ## avisos da sala que vão na próxima mensag
 var _departed: Dictionary = {}     ## id -> {at, avatar} de quem saiu da mesa (placar, SPEC 11.2)
 ## Senha (SPEC 9.3): fica só aqui; não vai nas opções, no state, na lista nem no retrato.
 var _password: String = ""
+## Resumo para recuperar a sala depois de um reinício (SPEC 9.4), só à distância: entre
+## as mãos, quando algo mudou, a sala guarda o retrato (last_summary) e soma 1 em
+## summary_rev; o servidor assina e manda a cada celular.
+var summaries: bool = false
+var summary_rev: int = 0
+var last_summary: Dictionary = {}
+var _summary_print: String = ""
+## Sala recriada sem ninguém devolver a senha: a marca da senha do resumo antigo, para
+## os resumos seguintes continuarem trancados.
+var kept_lock: String = ""
 
 
 ## Confere as opções de criação (SPEC 4.1). Devolve {ok, error, options}, com os
@@ -287,7 +299,19 @@ func needs_password(device: String, nick: String) -> bool:
 
 
 func password_matches(text: String) -> bool:
-	return _password != "" and text == _password
+	return _password != "" and is_password(text) and text == _password
+
+
+## Sala recriada de um resumo (SPEC 9.4): o resumo traz só uma marca da senha. Quem
+## voltou e sabe a senha a devolve (já conferida com a marca); sem ela, a sala fica
+## trancada para quem não estava nela.
+func set_password(text: String) -> void:
+	_password = text if is_password(text) else LOCKED
+
+
+## A senha da sala, só para o servidor marcar o resumo (nunca vai a ninguém).
+func password_for_summary() -> String:
+	return _password if is_password(_password) else ""
 
 
 func has_password() -> bool:
@@ -504,6 +528,11 @@ func snapshot(with_hand: bool = false) -> Dictionary:
 			"rebuy_ms": member.rebuy_deadline - _now() if member.rebuy_deadline >= 0 else -1,
 			"return_offer": member.return_offer, "folds_hand": member.folds_hand,
 		})
+	# Quem saiu, com o tempo desde a saída (cada servidor tem o seu relógio).
+	var departed: Dictionary = {}
+	for member_id: String in _departed:
+		departed[member_id] = {"ago": now - int(_departed[member_id]["at"]),
+			"avatar": _departed[member_id]["avatar"]}
 	var held: Dictionary = {}
 	for member_id: String in _held_until:
 		held[member_id] = maxi(0, int(_held_until[member_id]) - now)
@@ -518,6 +547,7 @@ func snapshot(with_hand: bool = false) -> Dictionary:
 		"paused": paused, "hand_ids": hand_ids,
 		"turn_ms": maxi(0, _turn_deadline - _now()) if _turn_deadline >= 0 else -1,
 		"bot_ms": maxi(0, _bot_due - _now()),
+		"departed": departed,
 	}
 
 
@@ -576,6 +606,14 @@ func restore(saved: Dictionary) -> String:
 		_held_until[member_id] = now + int(held[member_id])
 	_held_by = saved.get("held_by", {}).duplicate(true)
 	_pending_settings = saved.get("pending", {}).duplicate()
+	_departed.clear()
+	var departed: Variant = saved.get("departed", {})
+	if typeof(departed) == TYPE_DICTIONARY:
+		for member_id: Variant in departed:
+			var info: Variant = departed[member_id]
+			if typeof(info) == TYPE_DICTIONARY:
+				_departed[str(member_id)] = {"at": now - maxi(0, int(info.get("ago", 0))),
+					"avatar": clampi(int(info.get("avatar", 0)), 0, AVATARS - 1)}
 	_play_started = _now() - int(saved.get("play_ms", 0))
 	_next_hand_at = _now() + int(saved.get("next_hand_ms", 0))
 	_hand_ids.clear()
@@ -591,6 +629,12 @@ func restore(saved: Dictionary) -> String:
 		_turn_deadline = _now() + turn_ms if turn_ms >= 0 else -1
 		_bot_due = _now() + int(saved.get("bot_ms", 0))
 	return ""
+
+
+## Sala recriada de um resumo depois de um reinício (SPEC 9.4 e 6.6): a mão seguinte
+## espera o intervalo normal, para os celulares verem a mesa antes das cartas.
+func after_restart() -> void:
+	_next_hand_at = maxi(_next_hand_at, _now() + int(_config["hand_gap_ms"]))
 
 
 func member_at(seat: int) -> Member:
@@ -790,11 +834,13 @@ func _owner_command(member: Member, message: Dictionary) -> String:
 				return "não há partida para pausar"
 			_pause_started = _clock.now_ms()
 			paused = true
+			_summary_point()
 		Protocol.CMD_RESUME:
 			if not paused:
 				return "a mesa não está pausada"
 			_paused_total += _clock.now_ms() - _pause_started
 			paused = false
+			_summary_point()
 		Protocol.CMD_KICK:
 			var target: Member = _target(message)
 			if target == null or target == member:
@@ -907,6 +953,9 @@ func _step() -> bool:
 		return true
 	if not table.can_start_hand():
 		return false
+	# Antes de dar as cartas: se algo mudou desde o fim da mão (recompra, alguém
+	# sentou), o resumo novo garante que a recuperação repete esta mão.
+	_summary_point()
 	return _start_hand(now)
 
 
@@ -1029,6 +1078,28 @@ func _hand_finished() -> void:
 			_leave_table(member)
 			members.erase(member.id)
 	_apply_settings()
+	_summary_point()
+
+
+## Fim de mão ou mão por começar (SPEC 9.4): guarda o retrato para o resumo, se algo
+## mudou desde o último.
+func _summary_point() -> void:
+	if not summaries or phase != Protocol.PLAYING or table.hand_in_progress():
+		return
+	# Primeiro a comparação, barata; o retrato inteiro só quando algo mudou.
+	var table_now: Dictionary = table.to_dict()
+	table_now["hand"] = null
+	var people: Array = []
+	for member: Member in members.values():
+		people.append([member.id, member.seat, member.nick, member.avatar, member.away,
+			member.gone, member.return_offer, member.rebuy_offer])
+	var print_now: String = JSON.stringify([table_now, people, owner_id, _held_by.keys(),
+		_pending_settings, _banned.keys(), options, paused, _departed.keys()])
+	if print_now == _summary_print:
+		return
+	_summary_print = print_now
+	summary_rev += 1
+	last_summary = snapshot()
 
 
 ## Clássico: sobra um só com fichas e ninguém pode recomprar. Torneio: um tem tudo.

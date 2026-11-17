@@ -10,6 +10,7 @@ const WsServer := preload("res://net/ws_server.gd")
 const Server := preload("res://server/server.gd")
 const Clock := preload("res://server/clock.gd")
 const Protocol := preload("res://server/protocol.gd")
+const Summary := preload("res://server/summary.gd")
 
 ## Medido no Docker com 512 MB e 0,1 de CPU (etapa 5): 100 salas de 6 + 1 espectador
 ## ocupam ~67 MB; a mesa de 6 gasta ~88 ms de CPU por mão. 100 mesas de 6 a 120 mãos
@@ -26,9 +27,13 @@ const SILENCE_MS: int = 16000
 ## Fração de um núcleo do plano gratuito do Render, quando o contêiner não informa a
 ## própria cota em número (a variável CPU_SHARE pode trocar).
 const DEFAULT_CPU_SHARE: float = 0.1
+## Variável de ambiente com o segredo da assinatura do resumo (SPEC 9.4). Fica só no
+## painel do Render, nunca no repositório.
+const SECRET_ENV: String = "SUMMARY_SECRET"
 
 var ws: WsServer = null
 var server: Server = null
+var summary: Summary = null
 
 var _clock: Clock = null
 var _started_ms: int = 0
@@ -37,7 +42,8 @@ var _cgroup: bool = false
 var _share: float = 1.0
 
 
-## config: substitui os limites acima (testes) e os ajustes das salas.
+## config: substitui os limites acima (testes), os ajustes das salas e o segredo
+## (summary_secret; senão, a variável SUMMARY_SECRET).
 func _init(clock: Clock = null, config: Dictionary = {}) -> void:
 	_clock = clock if clock != null else Clock.new()
 	_started_ms = _clock.now_ms()
@@ -50,6 +56,7 @@ func _init(clock: Clock = null, config: Dictionary = {}) -> void:
 	ws.silence_ms = SILENCE_MS
 	var room_config: Dictionary = {"watcher_cap": WATCHER_CAP, "empty_close_ms": EMPTY_CLOSE_MS}
 	room_config.merge(config.get("room", {}), true)
+	summary = Summary.new(str(config.get("summary_secret", OS.get_environment(SECRET_ENV))))
 	server = Server.new(ws, _clock, {
 		"max_rooms": int(config.get("max_rooms", MAX_ROOMS)),
 		"slots": int(config.get("slots", SLOTS)),
@@ -58,6 +65,8 @@ func _init(clock: Clock = null, config: Dictionary = {}) -> void:
 		"cpu_share": _share,
 		"room": room_config,
 		"list_open_only": true,
+		"summary": summary,
+		"resume_wait_ms": int(config.get("resume_wait_ms", Server.RESUME_WAIT_MS)),
 	}, config.get("seed_source", Callable()))
 
 
@@ -100,6 +109,7 @@ func status() -> Dictionary:
 		"enviados_mb": snappedf(ws.bytes_out / 1048576.0, 0.01),
 		"recebidos_mb": snappedf(ws.bytes_in / 1048576.0, 0.01),
 		"pedidos_estranhos": ws.stray,
+		"resumo_com_segredo": summary.configured,
 	}
 
 

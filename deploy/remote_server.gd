@@ -23,6 +23,8 @@ func _initialize() -> void:
 	_host = RemoteHost.new()
 	var err: Error = _host.listen(port)
 	print("servidor: ouvindo na porta %d (%s)" % [port, error_string(err)])
+	if not _host.summary.configured:
+		print("servidor: sem %s; as salas não voltam depois de um reinício" % RemoteHost.SECRET_ENV)
 	if err != OK:
 		quit(1)
 

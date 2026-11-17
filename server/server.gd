@@ -15,6 +15,7 @@ const Clock := preload("res://server/clock.gd")
 const Wire := preload("res://server/wire.gd")
 const Load := preload("res://server/load.gd")
 const PasswordGuard := preload("res://server/password_guard.gd")
+const Summary := preload("res://server/summary.gd")
 
 const DEFAULT_MAX_ROOMS: int = 20
 const MAX_DEVICE: int = 64
@@ -28,6 +29,9 @@ const CPU_FULL: int = 90
 ## A lista de salas à distância leva no máximo isso (só as que aceitam gente nova).
 const MAX_LISTED: int = 60
 const MAX_PASSWORD: int = 8
+## Recuperação depois de um reinício (SPEC 9.4): quanto o servidor espera pelos outros
+## celulares da sala, a partir do primeiro resumo, antes de recriá-la.
+const RESUME_WAIT_MS: int = 6000
 
 
 class Session:
@@ -42,6 +46,16 @@ class Session:
 	var member_id: String = ""
 	var tokens: int = RATE_BURST * 1000   ## milésimos de mensagem
 	var tokens_ms: int = -1             ## -1 = ainda não mandou nada
+	var recovering: String = ""         ## apresentou o resumo dessa sala e espera a recriação
+
+
+## Uma sala por recriar (SPEC 9.4): o resumo mais recente apresentado e quem espera.
+class Recovery:
+	extends RefCounted
+
+	var data: Dictionary = {}     ## o resumo aberto (Summary.open)
+	var peers: Dictionary = {}    ## conexão -> senha que o celular sabia ("" se nenhuma)
+	var due: int = 0
 
 
 var rooms: Dictionary = {}   ## código da sala -> Room
@@ -59,11 +73,20 @@ var _routes: Dictionary = {}     # "sala/participante" -> peer
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _guard: PasswordGuard = null
 var _open_only: bool = false     # a lista mostra só as salas que aceitam gente nova
+## Resumo assinado (só à distância, SPEC 9.4). Sem ele, nada de resumo nem recuperação.
+var _summary: Summary = null
+var _resume_wait: int = RESUME_WAIT_MS
+var _issued: Dictionary = {}      # sala -> {rev, at}: o último resumo mandado
+var _recoveries: Dictionary = {}  # sala -> Recovery
+## Salas que acabaram neste processo -> quando (now_ms): resumo nenhum as recria (nem
+## um de antes do reinício) enquanto ele ainda poderia valer.
+var _ended: Dictionary = {}
 
 
 ## config: {max_rooms, room: ajustes repassados a cada sala, slots: vagas em
 ## centésimos (0 = sem limite), rate: mensagens por segundo por conexão (0 = sem
-## limite), cpu_reader e cpu_share: a CPU do serviço (server/load.gd)}.
+## limite), cpu_reader e cpu_share: a CPU do serviço (server/load.gd), summary: o
+## assinador do resumo (server/summary.gd), resume_wait_ms}.
 ## seed_source: só nos testes; repassado às salas.
 func _init(transport: Object, clock: Clock = null, config: Dictionary = {},
 		seed_source: Callable = Callable()) -> void:
@@ -74,6 +97,8 @@ func _init(transport: Object, clock: Clock = null, config: Dictionary = {},
 	_rate = int(config.get("rate", 0))
 	_open_only = bool(config.get("list_open_only", false))
 	_guard = PasswordGuard.new(_clock)
+	_summary = config.get("summary")
+	_resume_wait = int(config.get("resume_wait_ms", RESUME_WAIT_MS))
 	capacity = Load.new(int(config.get("slots", 0)), _clock, config.get("cpu_reader", Callable()),
 		float(config.get("cpu_share", 1.0)))
 	_seed_source = seed_source
@@ -103,7 +128,13 @@ func tick() -> void:
 	for room_id: String in rooms.keys():
 		if rooms[room_id].is_closed():
 			rooms.erase(room_id)
+			_issued.erase(room_id)
 			_guard.forget_room(room_id)
+			if _summary != null:
+				_forget_ended()
+				_ended[room_id] = _clock.now_ms()
+	_send_summaries()
+	_finish_recoveries()
 	capacity.sample()
 
 
@@ -124,7 +155,7 @@ func load_info() -> Dictionary:
 
 ## Cabe mais esse peso (sala nova ou espectador)? Também conta o teto de salas e a CPU.
 func _has_room_for(weight: int, new_room: bool = true) -> bool:
-	return ((not new_room or rooms.size() < _max_rooms)
+	return ((not new_room or rooms.size() + _recoveries.size() < _max_rooms)
 		and capacity.cpu_percent() < CPU_FULL and capacity.fits(used_slots(), weight))
 
 
@@ -208,6 +239,8 @@ func _message(session: Session, data: Dictionary) -> void:
 			_create_room(session, data)
 		Protocol.JOIN_ROOM:
 			_join_room(session, data)
+		Protocol.RESUME_ROOM:
+			_resume_room(session, data)
 		Protocol.LEAVE:
 			_leave(session)
 		_:
@@ -243,10 +276,10 @@ func _hello(session: Session, data: Dictionary) -> void:
 
 
 func _create_room(session: Session, data: Dictionary) -> void:
-	if session.room_id != "":
+	if session.room_id != "" or session.recovering != "":
 		_refuse(session, Protocol.E_REFUSED, "você já está em uma sala")
 		return
-	if rooms.size() >= _max_rooms:
+	if rooms.size() + _recoveries.size() >= _max_rooms:
 		_refuse(session, Protocol.E_FULL, "o servidor está cheio; tente mais tarde")
 		return
 	var checked: Dictionary = Room.normalize_options(data.get("options", {}))
@@ -264,12 +297,13 @@ func _create_room(session: Session, data: Dictionary) -> void:
 	var room: Room = Room.new(
 		room_id, options, _clock, _deliver.bind(room_id), _room_config, _seed_source)
 	room.send_state = _deliver_state.bind(room_id)
+	room.summaries = _summary != null
 	rooms[room_id] = room
 	_enter(session, room, false)
 
 
 func _join_room(session: Session, data: Dictionary) -> void:
-	if session.room_id != "":
+	if session.room_id != "" or session.recovering != "":
 		_refuse(session, Protocol.E_REFUSED, "você já está em uma sala")
 		return
 	var room_id: Variant = data.get("room")
@@ -292,7 +326,7 @@ func _join_room(session: Session, data: Dictionary) -> void:
 ## Sala com senha (SPEC 9.3): confere e conta as erradas. Responde o erro e devolve
 ## falso quando não pode entrar. Senha vazia é só o pedido dela: não conta como errada.
 func _password_ok(session: Session, room: Room, raw: Variant) -> bool:
-	if not room.needs_password(session.device, session.nick):
+	if not room.needs_password(_device_for(room.id, session), session.nick):
 		return true
 	var password: String = (raw as String).left(MAX_PASSWORD) if typeof(raw) == TYPE_STRING else ""
 	var ip: String = str(_transport.call("peer_ip", session.peer)) \
@@ -318,9 +352,9 @@ func _refuse_password(session: Session, text: String, wait: int) -> void:
 	_reply(session, message)
 
 
-func _enter(session: Session, room: Room, spectate: bool) -> void:
-	var result: Dictionary = room.join(
-		{"nick": session.nick, "avatar": session.avatar, "device": session.device}, spectate)
+func _enter(session: Session, room: Room, spectate: bool, restored: bool = false) -> void:
+	var result: Dictionary = room.join({"nick": session.nick, "avatar": session.avatar,
+		"device": _device_for(room.id, session)}, spectate)
 	if not result["ok"]:
 		_refuse(session, Protocol.E_REFUSED, result["error"])
 		return
@@ -337,9 +371,186 @@ func _enter(session: Session, room: Room, spectate: bool) -> void:
 			old.member_id = ""
 		_transport.call("drop", old_peer)
 	_routes[key] = session.peer
-	_reply(session, {"t": Protocol.JOINED, "room": room.id, "you": session.member_id,
-		"resumed": result.get("resumed", false)})
+	var joined: Dictionary = {"t": Protocol.JOINED, "room": room.id, "you": session.member_id,
+		"resumed": result.get("resumed", false)}
+	if restored:
+		joined["restored"] = true
+	_reply(session, joined)
+	if _issued.has(room.id):
+		# Quem entra depois do envio também precisa do resumo (SPEC 9.4).
+		_reply(session, _issued[room.id]["message"])
 	room.announce()
+
+
+## O código do aparelho que a sala guarda: à distância, a marca da sala (o resumo vai aos
+## celulares e não pode levar o código de ninguém); nos outros modos, o próprio código.
+func _device_for(room_id: String, session: Session) -> String:
+	if _summary == null:
+		return session.device
+	return _summary.device_tag(room_id, session.device)
+
+
+# ---------------------------------------------------------------- resumo (SPEC 9.4)
+
+
+## Manda o resumo assinado a cada celular da sala quando a sala guardou um retrato novo,
+## e de novo a cada Summary.REFRESH_S numa mão longa (o resumo vence).
+func _send_summaries() -> void:
+	if _summary == null:
+		return
+	var now_s: int = _clock.unix_s()
+	for room_id: String in rooms:
+		var room: Room = rooms[room_id]
+		if room.is_closed() or room.last_summary.is_empty():
+			continue
+		var sent: Dictionary = _issued.get(room_id, {})
+		if int(sent.get("rev", -1)) == room.summary_rev \
+				and now_s - int(sent.get("at", 0)) < Summary.REFRESH_S:
+			continue
+		var message: Dictionary = {"t": Protocol.SUMMARY, "room": room_id,
+			"s": _summary.sign(room.last_summary, room.summary_rev, room.kept_lock
+				if room.kept_lock != "" else _summary.lock_tag(room_id, room.password_for_summary()),
+				now_s)}
+		_issued[room_id] = {"rev": room.summary_rev, "at": now_s, "message": message}
+		for member_id: String in room.members:
+			var key: String = _key(room_id, member_id)
+			if _routes.has(key):
+				_transport.call("send", _routes[key], message)
+
+
+## O celular voltou depois de um reinício e devolveu o resumo da sala. Se a sala ainda
+## existe, é só entrar nela. Senão, confere o resumo e espera RESUME_WAIT_MS pelos
+## outros celulares; a sala é recriada do resumo mais recente apresentado.
+func _resume_room(session: Session, data: Dictionary) -> void:
+	if session.room_id != "" or session.recovering != "":
+		_refuse(session, Protocol.E_REFUSED, "você já está em uma sala")
+		return
+	var raw_id: Variant = data.get("room")
+	var token: Variant = data.get("summary")
+	var password: Variant = data.get("password", "")
+	if typeof(raw_id) != TYPE_STRING or typeof(token) != TYPE_STRING \
+			or typeof(password) != TYPE_STRING:
+		_refuse(session, Protocol.E_BAD_MESSAGE, "pedido malformado")
+		return
+	var room_id: String = (raw_id as String).to_upper()
+	var room: Room = rooms.get(room_id)
+	if room != null and not room.is_closed():
+		_join_room(session, {"room": room_id, "spectate": false, "password": password})
+		return
+	if _summary == null:
+		_refuse(session, Protocol.E_NO_ROOM, "sala não encontrada")
+		return
+	var opened: Dictionary = _summary.open(token, _clock.unix_s())
+	if not opened["ok"]:
+		_refuse(session, Protocol.E_NO_ROOM, opened["error"])
+		return
+	var info: Dictionary = opened["data"]
+	var saved: Dictionary = info["room"]
+	if str(saved.get("id", "")) != room_id:
+		_refuse(session, Protocol.E_NO_ROOM, "o resumo é de outra sala")
+		return
+	if str(info["boot"]) == _summary.boot or _ended_recently(room_id):
+		# Emitido por este mesmo servidor, ou a sala já acabou depois do reinício: não
+		# há o que recuperar.
+		_refuse(session, Protocol.E_NO_ROOM, "sala não encontrada")
+		return
+	var tag: String = _summary.device_tag(room_id, session.device)
+	if not _lists(saved, tag, session.nick):
+		_refuse(session, Protocol.E_NO_ROOM, "você não consta nesta sala")
+		return
+	var recovery: Recovery = _recoveries.get(room_id)
+	if recovery == null:
+		if rooms.size() + _recoveries.size() >= _max_rooms:
+			_refuse(session, Protocol.E_FULL, "o servidor está cheio; tente mais tarde")
+			return
+		recovery = Recovery.new()
+		recovery.data = info
+		recovery.due = _clock.now_ms() + _resume_wait
+		_recoveries[room_id] = recovery
+	elif int(info["rev"]) > int(recovery.data["rev"]):
+		# Um resumo mais recente: ninguém volta com as fichas de uma mão antiga.
+		recovery.data = info
+	recovery.peers[session.peer] = (password as String).left(MAX_PASSWORD)
+	session.recovering = room_id
+
+
+func _ended_recently(room_id: String) -> bool:
+	_forget_ended()
+	return _ended.has(room_id)
+
+
+## Esquece as salas encerradas há mais tempo do que um resumo vale.
+func _forget_ended() -> void:
+	var now: int = _clock.now_ms()
+	for ended_id: String in _ended.keys():
+		if now - int(_ended[ended_id]) > (Summary.VALID_S + Summary.SKEW_S) * 1000:
+			_ended.erase(ended_id)
+
+
+## O resumo traz essa pessoa (humana) entre os participantes, ou com fichas guardadas?
+## A mesma regra de Room._same_person e Room._held_id: marca do aparelho e apelido.
+static func _lists(saved: Dictionary, tag: String, nick: String) -> bool:
+	if tag == "":
+		return false
+	var people: Array = []
+	var members: Variant = saved.get("members", [])
+	if typeof(members) == TYPE_ARRAY:
+		for raw: Variant in members:
+			if typeof(raw) == TYPE_DICTIONARY and not bool(raw.get("bot", false)):
+				people.append([str(raw.get("device", "")), str(raw.get("base_nick", ""))])
+	var held: Variant = saved.get("held_by", {})
+	if typeof(held) == TYPE_DICTIONARY:
+		for who: Variant in held.values():
+			if typeof(who) == TYPE_DICTIONARY:
+				people.append([str(who.get("device", "")), str(who.get("nick", ""))])
+	return people.has([tag, nick])
+
+
+## Passada a espera, recria as salas e põe nelas quem ainda espera. A mão que estava
+## em andamento não existe no resumo: as apostas dela voltaram (SPEC 6.6).
+func _finish_recoveries() -> void:
+	var now: int = _clock.now_ms()
+	for room_id: String in _recoveries.keys():
+		var recovery: Recovery = _recoveries[room_id]
+		if now < recovery.due:
+			continue
+		_recoveries.erase(room_id)
+		var waiting: Array[Session] = []
+		for peer: int in recovery.peers:
+			var session: Session = _sessions.get(peer)
+			if session != null and session.recovering == room_id:
+				session.recovering = ""
+				waiting.append(session)
+		if waiting.is_empty():
+			continue
+		var problem: String = restore_room(recovery.data["room"])
+		if problem != "":
+			for session: Session in waiting:
+				_refuse(session, Protocol.E_NO_ROOM, problem)
+			continue
+		var room: Room = rooms[room_id]
+		room.summaries = true
+		room.summary_rev = int(recovery.data["rev"])
+		# O mesmo retrato vai de novo, assinado por este processo: a validade recomeça
+		# e quem voltou fica com um resumo para um próximo reinício.
+		room.last_summary = recovery.data["room"]
+		room.after_restart()
+		var lock: String = str(recovery.data["lock"])
+		if lock != "":
+			room.set_password(_known_password(room_id, lock, recovery))
+			if room.password_for_summary() == "":
+				room.kept_lock = lock
+		for session: Session in waiting:
+			_enter(session, room, false, true)
+
+
+## A senha que algum celular devolveu e que bate com a marca do resumo ("" = nenhuma).
+func _known_password(room_id: String, lock: String, recovery: Recovery) -> String:
+	for peer: int in recovery.peers:
+		var known: String = str(recovery.peers[peer])
+		if Room.is_password(known) and _summary.lock_tag(room_id, known) == lock:
+			return known
+	return ""
 
 
 func _leave(session: Session) -> void:
@@ -364,6 +575,7 @@ func _disconnected(peer: int) -> void:
 	if session == null:
 		return
 	_sessions.erase(peer)
+	session.recovering = ""
 	var room: Room = rooms.get(session.room_id)
 	if room != null:
 		var key: String = _key(room.id, session.member_id)
@@ -433,6 +645,6 @@ func _new_code() -> String:
 		var code: String = ""
 		for _i in CODE_LENGTH:
 			code += CODE_CHARS[_rng.randi_range(0, CODE_CHARS.length() - 1)]
-		if not rooms.has(code):
+		if not rooms.has(code) and not _recoveries.has(code) and not _ended.has(code):
 			return code
 	return ""
