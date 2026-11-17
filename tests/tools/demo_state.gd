@@ -20,6 +20,12 @@ static func make() -> Dictionary:
 			"in_hand": true, "bet": bets[i], "total": bets[i] + 4000,
 			"folded": folded[i], "all_in": stacks[i] == 0})
 	seats[5]["bet"] = 42000
+	# Léo caiu (contagem de volta) e Zé saiu pelo botão (torneio guardaria o lugar).
+	members[3]["connected"] = false
+	members[3]["remove_ms"] = 42000
+	members[7]["connected"] = false
+	members[7]["left"] = true
+	members[7]["remove_ms"] = 105000
 	var board: Array = [Cards.from_text("Ah"), Cards.from_text("Td"), Cards.from_text("7c"),
 		Cards.from_text("Qs")]
 	return {

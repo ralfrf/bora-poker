@@ -289,7 +289,8 @@ static func _countdown_text(entry: Dictionary) -> String:
 		return entry["base"]
 	var left: int = ceili(maxi(0, int(entry["until"]) - Time.get_ticks_msec()) / 1000.0)
 	var clock: String = "%d:%02d" % [left / 60, left % 60]
-	return ("Saiu · " if entry["base"] == "Saiu" else "Reconectando ") + clock
+	# Curto, para caber na etiqueta embaixo da placa ("Reconectando 0:42" ficava cortado).
+	return ("Saiu · " if entry["base"] == "Saiu" else "Caiu · ") + clock
 
 
 ## A contagem anda a cada segundo, sem esperar a próxima mensagem do servidor.
@@ -388,8 +389,6 @@ func render(state: Dictionary) -> void:
 		var tag: String = _tags.get(seat_index, "")
 		if shown.has(seat_index):
 			tag = String(shown[seat_index].get("name", tag))
-		elif member.get("left", false):
-			tag = "Saiu"
 		elif member.get("left", false) or not member.get("connected", true):
 			tag = _countdown_tag(seat_index, member)
 			counting[seat_index] = true
