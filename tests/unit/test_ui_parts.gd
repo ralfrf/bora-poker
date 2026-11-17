@@ -10,6 +10,7 @@ const Paint := preload("res://ui/widgets/paint.gd")
 const Evaluator := preload("res://engine/hand_evaluator.gd")
 const Cards := preload("res://engine/cards.gd")
 const Room := preload("res://server/room.gd")
+const AvatarStrip := preload("res://ui/widgets/avatar_strip.gd")
 
 const TEST_PROFILE: String = "user://perfil_teste_config.cfg"
 
@@ -47,6 +48,46 @@ func test_avatar_count_matches_server() -> void:
 	assert_eq(photos.get_width(), int(Paint.PHOTO_CELL) * Paint.PHOTO_COLUMNS)
 	assert_eq(photos.get_height(), int(Paint.PHOTO_CELL) * rows)
 	assert_true(Paint.is_photo(Paint.FREE_AVATARS) and not Paint.is_photo(Paint.FREE_AVATARS - 1))
+
+
+## A fileira do perfil: arrastar rola até os exclusivos sem escolher nada; tocar escolhe.
+func test_avatar_strip_drags_and_taps() -> void:
+	var strip: AvatarStrip = AvatarStrip.new(40.0, 0)
+	strip.size = Vector2(400, strip.cell())
+	var chosen: Array[int] = []
+	strip.picked.connect(func(index: int) -> void: chosen.append(index))
+	assert_true(strip.max_offset() > 0.0, "os exclusivos ficam além da borda")
+	assert_true(strip.index_at(390.0) < Paint.FREE_AVATARS, "no começo só aparecem os grátis")
+	# Arrasto longo para a esquerda: rola até o fim e não escolhe.
+	_finger(strip, true, 380.0)
+	for x: float in [370.0, 300.0, 100.0, -2000.0]:
+		var motion: InputEventMouseMotion = InputEventMouseMotion.new()
+		motion.position = Vector2(x, 20)
+		motion.button_mask = MOUSE_BUTTON_MASK_LEFT
+		strip._gui_input(motion)
+	_finger(strip, false, -2000.0)
+	assert_eq(strip.offset, strip.max_offset(), "rolou até o último")
+	assert_eq(chosen.size(), 0, "arrastar não escolhe")
+	# Toque no último avatar, agora à vista.
+	_finger(strip, true, 390.0)
+	_finger(strip, false, 392.0)
+	assert_eq(chosen, [Paint.AVATAR_COUNT - 1] as Array[int], "tocar escolhe o exclusivo")
+	assert_eq(strip.selected, Paint.AVATAR_COUNT - 1)
+	# Reabrir com um exclusivo escolhido mostra esse avatar.
+	var again: AvatarStrip = AvatarStrip.new(40.0, Paint.AVATAR_COUNT - 1)
+	again.size = Vector2(400, again.cell())
+	again.reveal(again.selected)
+	assert_eq(again.index_at(390.0), Paint.AVATAR_COUNT - 1, "o escolhido fica à vista")
+	strip.free()
+	again.free()
+
+
+func _finger(strip: AvatarStrip, down: bool, x: float) -> void:
+	var press: InputEventMouseButton = InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = down
+	press.position = Vector2(x, 20)
+	strip._gui_input(press)
 
 
 func test_sounds_are_synthesized() -> void:
