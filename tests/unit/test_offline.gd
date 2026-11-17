@@ -146,3 +146,17 @@ func test_profile_round_trip() -> void:
 	broken.load_file(TEST_PROFILE)
 	assert_true(broken.is_new(), "arquivo estragado vira perfil novo")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PROFILE))
+
+
+func test_room_with_friends_always_starts_from_the_default() -> void:
+	# Pedido do dono: criar sala (Mesma rede e Online) não lembra a última sala.
+	var options: Dictionary = OfflineOptions.build_room(OfflineOptions.ROOM_DEFAULTS)
+	assert_eq(options["format"], "classic")
+	assert_eq(options["seats"], 4)
+	assert_eq(options["turn_seconds"], 15)
+	assert_true(options["keep_open"], "manter sala aberta")
+	assert_eq(options["starting_stack"], 2000, "fichas iniciais 20")
+	assert_eq([options["small_blind"], options["big_blind"]], [10, 20], "blinds 0,10/0,20")
+	assert_eq(options["rebuy_limit"], -1, "recompras sem limite")
+	assert_eq(OfflineOptions.clean(OfflineOptions.ROOM_DEFAULTS), OfflineOptions.ROOM_DEFAULTS,
+		"todas as escolhas existem nas listas")

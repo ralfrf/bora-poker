@@ -31,6 +31,13 @@ const DEFAULTS: Dictionary = {
 	"format": 0, "seats": DEFAULT_SEATS, "stack": 1, "blinds": 1, "t_stack": 1,
 	"minutes": 1, "turn": 1, "rebuys": 4, "bots": 1, "keep_open": 0,
 }
+## Criar sala com amigos (Mesma rede e Online) começa sempre assim, sem lembrar a última
+## sala (pedido do dono, 17/11/2026): clássico, 4 lugares, 15 s, manter sala aberta,
+## fichas 20, blinds 0,10/0,20, recompras sem limite (e senha "Não").
+const ROOM_DEFAULTS: Dictionary = {
+	"format": 0, "seats": DEFAULT_SEATS, "stack": 1, "blinds": 1, "t_stack": 1,
+	"minutes": 1, "turn": 0, "rebuys": 4, "bots": 1, "keep_open": 1,
+}
 const SIZES: Dictionary = {
 	"format": 2, "stack": 4, "blinds": 4, "t_stack": 3, "minutes": 4, "turn": 4,
 	"rebuys": 5, "bots": 4, "keep_open": 2,

@@ -1,7 +1,8 @@
 extends "res://ui/screens/screen.gd"
 ## Criar mesa offline (SPEC 4.1): formato, lugares de 2 a 9 (você e os bots), nível dos
-## bots, fichas, blinds ou tempo por nível, tempo por jogada e recompra. As escolhas
-## ficam guardadas para a próxima vez.
+## bots, fichas, blinds ou tempo por nível, tempo por jogada e recompra. As escolhas da
+## mesa offline ficam guardadas; a sala com amigos começa sempre do padrão
+## (OfflineOptions.ROOM_DEFAULTS), para ninguém criar sem perceber uma sala com senha.
 ##
 ## A mesma tela cria a sala do Wi-Fi (wifi verdadeiro): sem bots (o dono põe na sala de
 ## espera) e com "Manter sala aberta" no clássico. À distância (remote), também a senha
@@ -52,7 +53,7 @@ func _init(owner_profile: Profile, wifi: bool = false, remote: bool = false) -> 
 
 
 func _build() -> void:
-	choice = OfflineOptions.clean(profile.online if _remote else (profile.wifi if _wifi else profile.offline))
+	choice = OfflineOptions.ROOM_DEFAULTS.duplicate() if _wifi else OfflineOptions.clean(profile.offline)
 	_back = Button.new()
 	_back.text = "‹"
 	_back.theme_type_variation = "QuietButton"
@@ -89,8 +90,8 @@ func _build() -> void:
 	for row: Control in [_format, _seats, _bots, _turn, _stack, _blinds, _minutes, _rebuys, _keep]:
 		add_child(row)
 	_bots.visible = not _wifi
-	_password_text = profile.room_password if _remote else ""
-	_password = ChoiceRow.new("Senha", _password_labels(), 1 if _password_text != "" else 0)
+	_password_text = ""
+	_password = ChoiceRow.new("Senha", _password_labels(), 0)
 	_password.changed.connect(_on_password)
 	_password.visible = _remote
 	add_child(_password)
@@ -217,16 +218,11 @@ func _on_password_typed(text: String) -> void:
 
 func _on_start() -> void:
 	if _remote:
-		profile.online = choice.duplicate()
-		profile.room_password = _password_text
-		profile.save()
 		var sent: Dictionary = choice.duplicate()
 		sent["password"] = _password_text
 		start.emit(sent)
 		return
 	if _wifi:
-		profile.wifi = choice.duplicate()
-		profile.save()
 		start.emit(choice.duplicate())
 		return
 	profile.offline = choice.duplicate()

@@ -19,9 +19,6 @@ var nick: String = ""
 var avatar: int = 0
 var last_mode: String = MODE_WIFI   ## SPEC 2: a primeira abertura mostra o Mesmo Wi-Fi
 var offline: Dictionary = {}
-var wifi: Dictionary = {}       ## escolhas da última sala criada no Wi-Fi
-var online: Dictionary = {}     ## escolhas da última sala criada à distância
-var room_password: String = ""  ## a última senha de sala criada à distância ("" = sem senha)
 var server_url: String = ""     ## endereço do Servidor 1 trocado em "Avançado" ("" = o padrão)
 var device: String = ""
 var sound: bool = true
@@ -47,13 +44,6 @@ func load_file(path: String = PATH) -> void:
 		device = raw_device if typeof(raw_device) == TYPE_STRING else ""
 		var raw_offline: Variant = file.get_value("offline", "escolhas", {})
 		offline = raw_offline if typeof(raw_offline) == TYPE_DICTIONARY else {}
-		var raw_wifi: Variant = file.get_value("wifi", "escolhas", {})
-		wifi = raw_wifi if typeof(raw_wifi) == TYPE_DICTIONARY else {}
-		var raw_online: Variant = file.get_value("distancia", "escolhas", {})
-		online = raw_online if typeof(raw_online) == TYPE_DICTIONARY else {}
-		var raw_password: Variant = file.get_value("distancia", "senha", "")
-		room_password = raw_password if typeof(raw_password) == TYPE_STRING \
-			and Room.is_password(raw_password) else ""
 		var raw_url: Variant = file.get_value("distancia", "servidor", "")
 		server_url = (raw_url as String).strip_edges().left(200) if typeof(raw_url) == TYPE_STRING else ""
 		sound = _flag(file.get_value("config", "sons", true), true)
@@ -71,9 +61,6 @@ func save() -> bool:
 	file.set_value("perfil", "ultimo_modo", last_mode)
 	file.set_value("perfil", "aparelho", device)
 	file.set_value("offline", "escolhas", offline)
-	file.set_value("wifi", "escolhas", wifi)
-	file.set_value("distancia", "escolhas", online)
-	file.set_value("distancia", "senha", room_password)
 	file.set_value("distancia", "servidor", server_url)
 	file.set_value("config", "sons", sound)
 	file.set_value("config", "vibracao", vibration)

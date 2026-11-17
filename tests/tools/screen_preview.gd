@@ -102,8 +102,6 @@ func _ready() -> void:
 		"remote_rooms", "remote_password", "remote_wake", "remote_empty":
 			screen = RemoteRoomsScreen.new(_remote_list(screen_name), "Servidor 1")
 		"remote_setup":
-			profile.room_password = "2580"
-			profile.online = {"seats": seats, "keep_open": 1}
 			screen = OfflineSetupScreen.new(profile, true, true)
 		"remote_waiting":
 			screen = WaitingScreen.new(_remote_waiting(seats))
