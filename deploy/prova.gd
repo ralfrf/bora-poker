@@ -32,6 +32,10 @@ var _tests: Dictionary = {"estado": "não rodou", "pico_processo_mb": 0.0,
 	"pico_conteiner_mb": 0.0, "segundos": 0}
 var _results: Array[String] = []
 var _pid: int = -1
+var _pipes: Array[FileAccess] = []        ## saída e erros dos testes
+var _partial: Array[String] = ["", ""]    ## pedaço de linha ainda sem fim, por pipe
+var _important: Array[String] = []        ## falhas, erros e o resumo
+var _tail: Array[String] = []             ## as últimas linhas
 var _tests_start_ms: int = 0
 var _next_sample_ms: int = 0
 var _peak_kb: int = 0
@@ -79,7 +83,12 @@ func _process(_delta: float) -> bool:
 func _start_tests() -> void:
 	var args: PackedStringArray = ["--headless", "--path",
 		ProjectSettings.globalize_path("res://"), "-s", "res://tests/run_tests.gd"]
-	_pid = OS.create_process(OS.get_executable_path(), args)
+	# Pelo pipe, a saída dos testes fica legível em /estado: no registro do Render ela
+	# não aparecia.
+	var info: Dictionary = OS.execute_with_pipe(OS.get_executable_path(), args, false)
+	_pid = int(info.get("pid", -1))
+	if info.has("stdio"):
+		_pipes = [info["stdio"], info["stderr"]]
 	_tests_start_ms = Time.get_ticks_msec()
 	_tests["estado"] = "rodando" if _pid > 0 else "não foi possível iniciar"
 	print("prova: testes iniciados (processo %d)" % _pid)
@@ -88,10 +97,15 @@ func _start_tests() -> void:
 ## Enquanto os testes rodam, lê o pico de memória do processo a cada segundo. O pico
 ## do contêiner inclui também este processo.
 func _watch_tests(now: int) -> void:
-	if _pid <= 0 or now < _next_sample_ms:
+	if _pid <= 0:
+		return
+	_read_pipes()
+	if now < _next_sample_ms:
 		return
 	_next_sample_ms = now + 1000
 	var running: bool = OS.is_process_running(_pid)
+	if not running:
+		_read_pipes()
 	for line: String in _read_lines("/proc/%d/status" % _pid):
 		if line.begins_with("VmHWM:"):
 			_peak_kb = maxi(_peak_kb, line.split(":")[1].strip_edges().split(" ")[0].to_int())
@@ -107,6 +121,29 @@ func _watch_tests(now: int) -> void:
 			_tests["estado"], _tests["segundos"], _tests["pico_processo_mb"],
 			_tests["pico_conteiner_mb"]])
 		_pid = -1
+
+
+func _read_pipes() -> void:
+	for i in _pipes.size():
+		var chunk: PackedByteArray = _pipes[i].get_buffer(65536)
+		if chunk.is_empty():
+			continue
+		var lines: PackedStringArray = (_partial[i] + chunk.get_string_from_utf8()).split("\n")
+		_partial[i] = lines[lines.size() - 1]
+		for k in lines.size() - 1:
+			_keep(lines[k].strip_edges())
+
+
+func _keep(line: String) -> void:
+	if line == "":
+		return
+	_tail.append(line)
+	if _tail.size() > 15:
+		_tail.pop_front()
+	if (line.begins_with("FALHA") or line.begins_with("Testes:") or line.contains("ERROR")
+			or line.begins_with("Simulação")) and _important.size() < 40:
+		_important.append(line.left(400))
+		print("testes: ", line)
 
 
 ## Arquivos de /proc e /sys dizem ter tamanho zero, então a leitura é linha a linha.
@@ -178,6 +215,8 @@ func _http(conn: Conn, head: String) -> bool:
 		"/estado":
 			var state: Dictionary = _tests.duplicate()
 			state["resultados"] = _results
+			state["saida_importante"] = _important
+			state["saida_final"] = _tail
 			_reply(conn, "200 OK", "application/json", JSON.stringify(state))
 		"/registro":
 			_record(path)
