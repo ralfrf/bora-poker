@@ -21,6 +21,8 @@ const MAX_CONNECTIONS: int = 800
 const RATE: int = 20               ## mensagens por segundo por conexão
 const WATCHER_CAP: int = 3         ## SPEC 4.3
 const EMPTY_CLOSE_MS: int = 300000 ## SPEC 6.5: 5 min, como as fichas guardadas
+## Ausente tem 2 min para tocar em "Voltei" ou sai da sala (só no Online; pedido do dono).
+const AWAY_MS: int = 120000
 ## Batimento à distância: o app manda "ping" a cada 5 s (ui/app/remote_game.gd), não a
 ## cada 2 s como no Wi-Fi, para gastar menos banda; calado por 16 s, caiu.
 const SILENCE_MS: int = 16000
@@ -54,7 +56,8 @@ func _init(clock: Clock = null, config: Dictionary = {}) -> void:
 	ws.trust_forwarded = true
 	ws.http_handler = _http
 	ws.silence_ms = SILENCE_MS
-	var room_config: Dictionary = {"watcher_cap": WATCHER_CAP, "empty_close_ms": EMPTY_CLOSE_MS}
+	var room_config: Dictionary = {"watcher_cap": WATCHER_CAP, "empty_close_ms": EMPTY_CLOSE_MS,
+		"away_ms": AWAY_MS}
 	room_config.merge(config.get("room", {}), true)
 	summary = Summary.new(str(config.get("summary_secret", OS.get_environment(SECRET_ENV))))
 	server = Server.new(ws, _clock, {

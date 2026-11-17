@@ -300,6 +300,8 @@ func failure() -> String:
 		return error_text
 	if left_reason == Protocol.R_KICKED:
 		return "O dono da sala tirou você da sala."
+	if left_reason == Protocol.R_AWAY:
+		return AWAY_TEXT
 	return ""
 
 

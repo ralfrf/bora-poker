@@ -69,6 +69,7 @@ const ENDED: String = "closed"
 # Motivos de LEFT e de CLOSED.
 const R_LEFT: String = "left"
 const R_KICKED: String = "kicked"
+const R_AWAY: String = "away"           ## ficou ausente por mais de 2 minutos e saiu da sala
 const R_OWNER: String = "owner"         ## o dono encerrou a sala
 const R_FINISHED: String = "finished"   ## a partida acabou
 const R_EMPTY: String = "empty"         ## não sobrou nenhum humano

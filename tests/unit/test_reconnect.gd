@@ -472,3 +472,56 @@ func test_leave_button_shows_left_not_reconnecting() -> void:
 	# Voltou: deixa de aparecer como quem saiu.
 	_join(t_room, "Caio", "dev-c")
 	assert_false(_member_info(tour[1], tour[3]).get("left", false), "voltou")
+
+
+func _three_online(raw: Dictionary) -> Array:
+	var room: Room = _room(raw, {"away_ms": 120000})
+	var a: String = _join(room, "Ana", "dev-a")["id"]
+	var b: String = _join(room, "Bia", "dev-b")["id"]
+	var c: String = _join(room, "Caio", "dev-c")["id"]
+	room.handle(a, {"t": Protocol.START})
+	return [room, a, b, c]
+
+
+func test_away_has_two_minutes_online_only() -> void:
+	# Mesma rede e offline (sem prazo): o ausente fica, pagando os blinds.
+	var lan: Array = _three({"turn_seconds": 0})
+	lan[0].handle(lan[3], {"t": Protocol.AWAY, "on": true})
+	assert_false(_member_info(lan[1], lan[3]).has("remove_ms"), "sem contagem fora do Online")
+	_clock.advance(600000)
+	lan[0].tick()
+	assert_true(lan[0].members.has(lan[3]), "continua na sala")
+	# Online, clássico: "Voltei" antes dos 2 minutos mantém o lugar.
+	var parts: Array = _three_online({"turn_seconds": 0})
+	var room: Room = parts[0]
+	var a: String = parts[1]
+	var c: String = parts[3]
+	room.handle(c, {"t": Protocol.AWAY, "on": true})
+	assert_eq(_member_info(a, c).get("remove_ms"), 120000, "ausente: 2 minutos")
+	_clock.advance(100000)
+	room.tick()
+	room.handle(c, {"t": Protocol.AWAY, "on": false})
+	assert_false(_member_info(a, c).has("remove_ms"), "voltou: sem contagem")
+	_clock.advance(60000)
+	room.tick()
+	assert_true(room.members.has(c), "quem voltou não sai")
+	# Ausente de novo e não volta: sai da sala, com as fichas guardadas.
+	room.handle(c, {"t": Protocol.AWAY, "on": true})
+	_clock.advance(120000)
+	_fold_until(room, func() -> bool: return not room.members.has(c))
+	assert_false(room.members.has(c), "2 minutos ausente: saiu da sala")
+	var left: Array = _inbox.get(c, []).filter(func(m: Dictionary) -> bool:
+		return m["t"] == Protocol.LEFT)
+	assert_eq(left.back().get("reason") if not left.is_empty() else "", Protocol.R_AWAY,
+		"o aparelho dele fica sabendo por quê")
+	assert_true(room.table.cashbox.held(c) > 0, "as fichas ficam guardadas, como no Sair")
+	assert_true(room.table.is_balanced())
+	# Torneio: sai entre as mãos e as fichas vão para quem fica.
+	var tour: Array = _three_online({"format": Table.TOURNAMENT, "turn_seconds": 0})
+	var t_room: Room = tour[0]
+	t_room.handle(tour[3], {"t": Protocol.AWAY, "on": true})
+	_clock.advance(120000)
+	_fold_until(t_room, func() -> bool: return not t_room.members.has(tour[3]))
+	assert_false(t_room.members.has(tour[3]), "torneio: saiu")
+	assert_eq(t_room.table.participants().size(), 2)
+	assert_true(t_room.table.is_balanced())

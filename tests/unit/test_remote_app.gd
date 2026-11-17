@@ -425,3 +425,55 @@ func test_load_probe_once_asks_a_single_time() -> void:
 		awake.poll(), func() -> bool: return awake.finished()))
 	assert_eq(awake.state, LoadProbe.State.READY, "respondeu uma vez e parou")
 	host.ws.stop()
+
+
+func test_list_shows_room_to_return_even_when_closed_to_new_people() -> void:
+	var transport: LocalTransport = LocalTransport.new()
+	var server: Server = Server.new(transport, Clock.new(true),
+		{"room": FAST, "list_open_only": true})
+	var ana: LocalTransport.Endpoint = transport.connect_client()
+	var bia: LocalTransport.Endpoint = transport.connect_client()
+	_hello(ana, "Ana", "dev-ana")
+	_hello(bia, "Bia", "dev-bia")
+	server.tick()
+	ana.send({"t": Protocol.CREATE_ROOM, "options": {"seats": 3, "format": "tournament",
+		"turn_seconds": 0}})
+	server.tick()
+	var room_id: String = server.rooms.keys()[0]
+	bia.send({"t": Protocol.JOIN_ROOM, "room": room_id, "spectate": false})
+	server.tick()
+	var bia_id: String = ""
+	for message: Dictionary in bia.poll():
+		if message["t"] == Protocol.JOINED:
+			bia_id = message["you"]
+	ana.send({"t": Protocol.START})
+	server.tick()
+	# O app de Bia fecha; ela abre de novo e pede a lista.
+	bia.close()
+	server.tick()
+	var again: LocalTransport.Endpoint = transport.connect_client()
+	var caio: LocalTransport.Endpoint = transport.connect_client()
+	_hello(again, "Bia", "dev-bia")
+	_hello(caio, "Caio", "dev-caio")
+	server.tick()
+	again.poll()
+	caio.poll()
+	again.send({"t": Protocol.LIST_ROOMS})
+	caio.send({"t": Protocol.LIST_ROOMS})
+	server.tick()
+	var lists: Array = []
+	for end: LocalTransport.Endpoint in [again, caio]:
+		for message: Dictionary in end.poll():
+			if message["t"] == Protocol.ROOMS:
+				lists.append(message["rooms"])
+	assert_eq(lists[0].size(), 1, "Bia vê o torneio de onde caiu")
+	assert_true(lists[0][0].get("back", false), "marcado para voltar")
+	assert_eq(lists[1].size(), 0, "quem nunca esteve lá não vê o torneio em andamento")
+	again.send({"t": Protocol.JOIN_ROOM, "room": room_id, "spectate": false})
+	server.tick()
+	var joined: Dictionary = {}
+	for message: Dictionary in again.poll():
+		if message["t"] == Protocol.JOINED:
+			joined = message
+	assert_eq(joined.get("you"), bia_id, "volta para o mesmo lugar")
+	assert_true(joined.get("resumed", false))

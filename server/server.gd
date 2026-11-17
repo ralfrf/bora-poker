@@ -224,17 +224,21 @@ func _message(session: Session, data: Dictionary) -> void:
 		return
 	match type:
 		Protocol.LIST_ROOMS:
+			# Primeiro as salas para onde a pessoa pode voltar (caiu, saiu com o lugar ou
+			# as fichas guardadas), mesmo fechadas a gente nova; depois as abertas.
+			var mine: Array = []
 			var list: Array = []
 			for room: Room in rooms.values():
 				if room.is_closed():
 					continue
 				var summary: Dictionary = room.summary()
-				if _open_only and not summary["open"]:
-					continue
-				list.append(summary)
-				if _open_only and list.size() >= MAX_LISTED:
-					break
-			_reply(session, {"t": Protocol.ROOMS, "rooms": list})
+				if room.can_return(_device_for(room.id, session), session.nick):
+					summary["back"] = true
+					mine.append(summary)
+				elif not _open_only or (summary["open"] and list.size() < MAX_LISTED):
+					list.append(summary)
+			mine.append_array(list)
+			_reply(session, {"t": Protocol.ROOMS, "rooms": mine})
 		Protocol.CREATE_ROOM:
 			_create_room(session, data)
 		Protocol.JOIN_ROOM:

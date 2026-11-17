@@ -6,6 +6,8 @@ extends RefCounted
 ## Quem usa chama update() a cada quadro e desenha as mensagens que ele devolve.
 
 const Protocol := preload("res://server/protocol.gd")
+## Ficou ausente e o prazo venceu (SPEC 5): o servidor tirou da sala.
+const AWAY_TEXT: String = "Você ficou ausente por mais de 2 minutos e saiu da sala."
 
 var my_id: String = ""
 var room_id: String = ""

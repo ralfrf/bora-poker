@@ -195,6 +195,9 @@ static func room_detail(room: Dictionary) -> String:
 	else:
 		parts.append("blinds %s/%s" % [Money.format(int(room.get("small_blind", 0))),
 			Money.format(int(room.get("big_blind", 0)))])
+	if room.get("back", false):
+		# Caiu ou fechou o app: a sala aparece mesmo sem aceitar gente nova.
+		return "Você está nesta partida · toque para voltar"
 	if room.get("phase") == Protocol.PLAYING:
 		parts.append("em partida, com vaga")
 	return " · ".join(parts)
@@ -232,6 +235,12 @@ func _on_row(index: int) -> void:
 		return
 	_target = _rooms[index]
 	_from_code = false
+	if _target.get("back", false):
+		# A sala é sua: volta direto, sem pergunta nem senha (o servidor reconhece o aparelho).
+		_notice = ""
+		_game.join_room(str(_target.get("id", "")))
+		_refresh()
+		return
 	if _target.get("phase") == Protocol.PLAYING:
 		_dialog.ask("A partida já começou", "Há lugar livre na mesa. Quer entrar e jogar?",
 			["Entrar", "Voltar"])

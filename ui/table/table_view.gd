@@ -388,6 +388,12 @@ func render(state: Dictionary) -> void:
 		elif member.get("left", false) or not member.get("connected", true):
 			tag = _countdown_tag(seat_index, member)
 			counting[seat_index] = true
+		elif member.get("away", false) and member.has("remove_ms"):
+			# Ausente: o tempo para tocar em "Voltei" aparece no avatar.
+			if tag == "":
+				tag = "Ausente"
+			_countdown_tag(seat_index, member)
+			counting[seat_index] = true
 		var info: Dictionary = {
 			"nick": member.get("nick", ""), "avatar": member.get("avatar", 0),
 			"stack": entry.get("stack", 0), "turn": turn, "fraction": fraction,
@@ -510,7 +516,8 @@ func _show_column(table: Dictionary, you: Dictionary, me: Dictionary,
 			_prompt_main.set_content("Voltar ao jogo", -1)
 			_prompt_alt.visible = false
 		"away":
-			_prompt_text.text = "Você ficou ausente e está desistindo das mãos."
+			_prompt_text.text = "Você ficou ausente e está desistindo das mãos." + (
+				" Volte em até 2 minutos ou você sai da sala." if me.has("remove_ms") else "")
 			_prompt_main.set_content("Voltei", -1)
 			_prompt_alt.visible = false
 		"sit":

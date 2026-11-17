@@ -47,6 +47,7 @@ const DEFAULT_CONFIG: Dictionary = {
 	"held_ms": 300000,          # fichas guardadas de quem saiu: 5 min (SPEC 6.2)
 	"offline_ms": 60000,        # lugar guardado de quem caiu (SPEC 6.2 e 6.3)
 	"return_ms": 120000,        # torneio: quem saiu ou caiu tem 2 min para voltar (SPEC 6.3)
+	"away_ms": 0,               # Online: ausente tem esse prazo para tocar em "Voltei"; 0 = sem prazo
 	"allow_empty": false,       # sala sem humanos continua aberta (simulações)
 	"bot_evaluations": 0,       # teto de simulação do Difícil (0 = o padrão)
 	"bot_style": "",            # força um estilo para todos os bots (simulações)
@@ -84,6 +85,7 @@ class Member:
 	var reacted_at: int = -1       ## relógio real da última reação (limite de frequência)
 	var watcher: bool = false      ## assiste por escolha ou voltou sem lugar: conta no teto (SPEC 4.3)
 	var quit: bool = false         ## tocou em "Sair" (não caiu): os outros veem "Saiu", não "Reconectando…"
+	var away_since: int = -1       ## relógio real desde quando está ausente; -1 = presente
 
 
 var id: String = ""
@@ -301,6 +303,16 @@ func needs_password(device: String, nick: String) -> bool:
 	return _same_person(device, base) == null and _held_id(device, base) == ""
 
 
+## Essa pessoa pode voltar para esta sala: ainda é participante (caiu ou saiu e o lugar
+## está guardado) ou tem fichas guardadas aqui. A lista de salas mostra a sala para ela
+## mesmo quando não aceita gente nova (torneio em andamento).
+func can_return(device: String, nick: String) -> bool:
+	if phase == Protocol.ENDED or device == "":
+		return false
+	var base: String = clean_nick(nick)
+	return _same_person(device, base) != null or _held_id(device, base) != ""
+
+
 func password_matches(text: String) -> bool:
 	return _password != "" and is_password(text) and text == _password
 
@@ -419,6 +431,9 @@ func tick() -> void:
 		close(Protocol.R_EMPTY)
 		return
 	_expire_offline()
+	if phase == Protocol.ENDED:
+		return
+	_expire_away()
 	if phase == Protocol.ENDED:
 		return
 	_expire_held()
@@ -593,6 +608,8 @@ func restore(saved: Dictionary) -> String:
 		member.rebuy_deadline = _now() + rebuy_ms if rebuy_ms >= 0 else -1
 		member.return_offer = bool(raw.get("return_offer", false))
 		member.folds_hand = int(raw.get("folds_hand", 0))
+		# O prazo do ausente recomeça na sala retomada (cada aparelho tem o seu relógio).
+		member.away_since = now if member.away and not member.is_bot else -1
 		if member.is_bot:
 			member.bot = Bot.new(member.level, member.style, _rng.randi(),
 				int(_config["bot_evaluations"]))
@@ -1164,6 +1181,26 @@ func _expire_offline() -> void:
 			_broadcast([])
 
 
+## Ausente há away_ms sem tocar em "Voltei": sai da sala como quem toca em "Sair" (pedido
+## do dono, 17/11/2026; só no Online, que liga o prazo). No clássico as fichas ficam guardadas; no torneio, a saída conta
+## desde que ficou ausente, então ele sai entre uma mão e outra e as fichas vão para
+## quem continua. O anfitrião do Wi-Fi não sai (a sala roda no celular dele).
+func _expire_away() -> void:
+	var limit: int = int(_config["away_ms"])
+	if limit <= 0 or phase != Protocol.PLAYING:
+		return
+	var now: int = _clock.now_ms()
+	for member: Member in members.values():
+		if (member.is_bot or not member.away or member.away_since < 0 or not member.connected
+				or member.offline_since >= 0 or member.id == host_id
+				or now - member.away_since < limit):
+			continue
+		_send_to(member, {"t": Protocol.LEFT, "reason": Protocol.R_AWAY})
+		member.offline_since = member.away_since
+		leave(member.id)
+		return
+
+
 func _expire_rebuys(now: int) -> bool:
 	for member: Member in members.values():
 		if member.rebuy_offer and member.rebuy_deadline >= 0 and now >= member.rebuy_deadline:
@@ -1315,8 +1352,11 @@ func _sit_refusal(member: Member) -> String:
 
 func _mark_away(member: Member, on: bool) -> void:
 	member.away = on
+	if on and member.away_since < 0:
+		member.away_since = _clock.now_ms()
 	if not on:
 		member.timeouts = 0
+		member.away_since = -1
 	if table.format == Table.CLASSIC and member.seat >= 0:
 		table.set_away(member.seat, on)
 	_notes.append({"type": "away", "seat": member.seat, "on": on})
@@ -1461,10 +1501,17 @@ func _table_view() -> Dictionary:
 	return view
 
 
-## Quanto falta para o lugar ser liberado (a mesa mostra a contagem), ou -1: no
-## torneio, quem saiu ou caiu (return_ms); no clássico, quem caiu (offline_ms).
+## Quanto falta para o lugar ser liberado (a mesa mostra a contagem), ou -1: quem está
+## ausente (away_ms); no torneio, quem saiu ou caiu (return_ms); no clássico, quem caiu
+## (offline_ms).
 func _remove_ms(member: Member) -> int:
-	if member.is_bot or member.seat < 0 or member.offline_since < 0 or phase != Protocol.PLAYING:
+	if member.is_bot or member.seat < 0 or phase != Protocol.PLAYING:
+		return -1
+	var away_limit: int = int(_config["away_ms"])
+	if (member.away and member.away_since >= 0 and member.offline_since < 0 and away_limit > 0
+			and member.id != host_id):
+		return maxi(0, away_limit - (_clock.now_ms() - member.away_since))
+	if member.offline_since < 0:
 		return -1
 	var away_for: int = _clock.now_ms() - member.offline_since
 	if table.format == Table.TOURNAMENT:
