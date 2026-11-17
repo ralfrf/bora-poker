@@ -2,7 +2,7 @@ extends RefCounted
 ## Pergunta a lotação de um servidor à distância (SPEC 9.3) com GET /lotacao, na mesma
 ## porta do WebSocket. A pergunta também acorda o servidor do Render, que dorme depois de
 ## 15 minutos sem ninguém: por isso começa assim que a pessoa escolhe "Amigos à
-## distância". Sem resposta em 3 s, o estado vira WAKING ("Acordando o servidor…"); a
+## distância". Sem resposta em 3 s, o estado vira WAKING ("Conectando ao servidor…" com o aviso); a
 ## sonda insiste por até 2 minutos e, sem resposta, o servidor fica DOWN ("Em
 ## manutenção"). Respondendo, repete a pergunta de tempos em tempos.
 ##

@@ -5,7 +5,7 @@ extends "res://ui/screens/screen.gd"
 ## Na coluna, "Usar código" (para achar a sala de um amigo direto) e "Criar sala".
 ##
 ## A sessão (ui/app/remote_game.gd) já vem conectando: enquanto o servidor acorda,
-## aparece "Acordando o servidor…". Ao entrar numa sala, a mesma sessão segue para a sala
+## aparece "Conectando ao servidor…" com o aviso. Ao entrar numa sala, a mesma sessão segue para a sala
 ## de espera (sinal entered).
 
 signal back

@@ -258,7 +258,7 @@ func status_text() -> String:
 		Link.RECONNECTING:
 			return "Conexão perdida. Reconectando…"
 		Link.CONNECTING:
-			return "Acordando o servidor…" if waking() else "Conectando ao servidor…"
+			return "Conectando ao servidor…"
 	return ""
 
 

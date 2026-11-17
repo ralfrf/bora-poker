@@ -226,10 +226,14 @@ func test_load_probe_reads_remote_host() -> void:
 	var host: RemoteHost = RemoteHost.new(null, {"slots": 500, "room": FAST})
 	assert_eq(host.listen(0, "127.0.0.1"), OK)
 	var probe: LoadProbe = LoadProbe.new("ws://127.0.0.1:%d" % host.ws.port)
+	var states: Array = []
 	assert_true(_spin(func() -> void:
 		host.tick()
-		probe.poll(),
+		probe.poll()
+		states.append(probe.state),
 		func() -> bool: return probe.state == LoadProbe.State.READY), "respondeu")
+	assert_false(states.has(LoadProbe.State.WAKING),
+		"servidor acordado: nunca mostra o aviso de espera")
 	assert_eq(probe.pct, 0)
 	assert_false(probe.full)
 	probe.close()
@@ -269,7 +273,7 @@ func test_remote_game_backoff_and_give_up() -> void:
 	for _i in 4000:
 		clock.advance(250)
 		game.update()
-		woke = woke or game.status_text() == "Acordando o servidor…"
+		woke = woke or game.waking()
 		var retry_at: int = int(game.get("_retry_at"))
 		if retry_at >= 0 and retry_at != scheduled:
 			delays.append(retry_at - clock.now_ms())
