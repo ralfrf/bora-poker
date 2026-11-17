@@ -13,11 +13,17 @@ const Room := preload("res://server/room.gd")
 const Protocol := preload("res://server/protocol.gd")
 const Clock := preload("res://server/clock.gd")
 const Wire := preload("res://server/wire.gd")
+const Load := preload("res://server/load.gd")
 
 const DEFAULT_MAX_ROOMS: int = 20
 const MAX_DEVICE: int = 64
 const CODE_CHARS: String = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"   # sem 0, O, 1 e I
 const CODE_LENGTH: int = 4
+## Limite de mensagens por conexão: até RATE_BURST de uma vez, repostas a `rate` por
+## segundo (SPEC 9.3). Quem passa disso é desconectado.
+const RATE_BURST: int = 40
+## Com a CPU do último minuto acima disso, sala nova é recusada (SPEC 9.3).
+const CPU_FULL: int = 90
 
 
 class Session:
@@ -30,21 +36,28 @@ class Session:
 	var device: String = ""
 	var room_id: String = ""
 	var member_id: String = ""
+	var tokens: int = RATE_BURST * 1000   ## milésimos de mensagem
+	var tokens_ms: int = -1             ## -1 = ainda não mandou nada
 
 
 var rooms: Dictionary = {}   ## código da sala -> Room
+## Vagas de carga e CPU (servidor à distância). Sem "slots" na configuração, não limita.
+var capacity: Load = null
 
 var _transport: Object = null
 var _clock: Clock = null
 var _max_rooms: int = DEFAULT_MAX_ROOMS
 var _room_config: Dictionary = {}
+var _rate: int = 0   # mensagens por segundo por conexão; 0 = sem limite
 var _seed_source: Callable = Callable()
 var _sessions: Dictionary = {}   # peer -> Session
 var _routes: Dictionary = {}     # "sala/participante" -> peer
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 
-## config: {max_rooms, room: ajustes repassados a cada sala}.
+## config: {max_rooms, room: ajustes repassados a cada sala, slots: vagas em
+## centésimos (0 = sem limite), rate: mensagens por segundo por conexão (0 = sem
+## limite), cpu_reader e cpu_share: a CPU do serviço (server/load.gd)}.
 ## seed_source: só nos testes; repassado às salas.
 func _init(transport: Object, clock: Clock = null, config: Dictionary = {},
 		seed_source: Callable = Callable()) -> void:
@@ -52,6 +65,9 @@ func _init(transport: Object, clock: Clock = null, config: Dictionary = {},
 	_clock = clock if clock != null else Clock.new()
 	_max_rooms = int(config.get("max_rooms", DEFAULT_MAX_ROOMS))
 	_room_config = config.get("room", {})
+	_rate = int(config.get("rate", 0))
+	capacity = Load.new(int(config.get("slots", 0)), _clock, config.get("cpu_reader", Callable()),
+		float(config.get("cpu_share", 1.0)))
 	_seed_source = seed_source
 	if seed_source.is_valid():
 		_rng.seed = int(seed_source.call())
@@ -79,6 +95,33 @@ func tick() -> void:
 	for room_id: String in rooms.keys():
 		if rooms[room_id].is_closed():
 			rooms.erase(room_id)
+	capacity.sample()
+
+
+## Vagas em uso, em centésimos: cada sala pelo tamanho e pelos espectadores que contam.
+func used_slots() -> int:
+	var used: int = 0
+	for room: Room in rooms.values():
+		if not room.is_closed():
+			used += Load.room_weight(int(room.options["seats"]), room.watchers())
+	return used
+
+
+## A lotação para o app (SPEC 9.3): % e se cabe sala nova.
+func load_info() -> Dictionary:
+	return {"pct": capacity.percent(used_slots()),
+		"full": not _has_room_for(Load.room_weight(Room.MIN_SEATS, 0))}
+
+
+## Cabe mais esse peso (sala nova ou espectador)? Também conta o teto de salas e a CPU.
+func _has_room_for(weight: int, new_room: bool = true) -> bool:
+	return ((not new_room or rooms.size() < _max_rooms)
+		and capacity.cpu_percent() < CPU_FULL and capacity.fits(used_slots(), weight))
+
+
+## Quantas conexões estão apresentadas (para o diagnóstico).
+func session_count() -> int:
+	return _sessions.size()
 
 
 ## Continua uma sala a partir do retrato de outro servidor (Wi-Fi: o anfitrião saiu e
@@ -121,6 +164,11 @@ func member_ip(room_id: String, member_id: String) -> String:
 
 
 func _message(session: Session, data: Dictionary) -> void:
+	if not _within_rate(session):
+		_refuse(session, Protocol.E_REFUSED, "mensagens demais")
+		_disconnected(session.peer)
+		_transport.call("drop", session.peer)
+		return
 	var type: Variant = data.get("t")
 	if typeof(type) != TYPE_STRING:
 		_refuse(session, Protocol.E_BAD_MESSAGE, "mensagem malformada")
@@ -173,7 +221,10 @@ func _hello(session: Session, data: Dictionary) -> void:
 	session.avatar = clampi(avatar, 0, Room.AVATARS - 1)
 	session.device = (device as String).left(MAX_DEVICE)
 	session.greeted = true
-	_reply(session, {"t": Protocol.WELCOME, "v": Protocol.VERSION, "nick": session.nick})
+	var welcome: Dictionary = {"t": Protocol.WELCOME, "v": Protocol.VERSION, "nick": session.nick}
+	if capacity.total > 0:
+		welcome["load"] = load_info()
+	_reply(session, welcome)
 
 
 func _create_room(session: Session, data: Dictionary) -> void:
@@ -181,13 +232,16 @@ func _create_room(session: Session, data: Dictionary) -> void:
 		_refuse(session, Protocol.E_REFUSED, "você já está em uma sala")
 		return
 	if rooms.size() >= _max_rooms:
-		_refuse(session, Protocol.E_REFUSED, "o servidor está cheio; tente mais tarde")
+		_refuse(session, Protocol.E_FULL, "o servidor está cheio; tente mais tarde")
 		return
 	var checked: Dictionary = Room.normalize_options(data.get("options", {}))
 	if not checked["ok"]:
 		_refuse(session, Protocol.E_REFUSED, checked["error"])
 		return
 	var options: Dictionary = checked["options"]
+	if not _has_room_for(Load.room_weight(int(options["seats"]), 0)):
+		_refuse(session, Protocol.E_FULL, "o servidor está cheio; tente mais tarde")
+		return
 	if (options["bots"] as Array).size() >= int(options["seats"]):
 		_refuse(session, Protocol.E_REFUSED, "deixe um lugar para você")
 		return
@@ -211,6 +265,9 @@ func _join_room(session: Session, data: Dictionary) -> void:
 	var room: Room = rooms.get((room_id as String).to_upper())
 	if room == null or room.is_closed():
 		_refuse(session, Protocol.E_NO_ROOM, "sala não encontrada")
+		return
+	if spectate and not _has_room_for(Load.WATCHER_WEIGHT, false):
+		_refuse(session, Protocol.E_FULL, "o servidor está cheio; tente mais tarde")
 		return
 	_enter(session, room, spectate)
 
@@ -292,6 +349,20 @@ func _deliver_state(member_id: String, message: Dictionary, pack: Wire.StatePack
 		_transport.call("send_state", _routes[key], message, pack)
 	else:
 		_transport.call("send", _routes[key], message)
+
+
+## Repõe as mensagens da conexão e gasta uma. Falso: passou do limite.
+func _within_rate(session: Session) -> bool:
+	if _rate <= 0:
+		return true
+	var now: int = _clock.now_ms()
+	if session.tokens_ms >= 0:
+		session.tokens = mini(RATE_BURST * 1000, session.tokens + (now - session.tokens_ms) * _rate)
+	session.tokens_ms = now
+	if session.tokens < 1000:
+		return false
+	session.tokens -= 1000
+	return true
 
 
 func _reply(session: Session, message: Dictionary) -> void:

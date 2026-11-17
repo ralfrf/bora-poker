@@ -214,7 +214,7 @@ func test_stray_http_request_gets_plain_answer() -> void:
 		assert_true(text.begins_with("HTTP/1.1 " + case[1]), "resposta HTTP: " + text.left(40))
 		assert_true(text.ends_with("\r\n\r\n" + case[2]), "corpo da resposta")
 	assert_eq(server.stray, ["GET /", "(pedido inválido)"] as Array[String],
-		"os pedidos ficam anotados para o diagnóstico, menos a verificação de saúde")
+		"os pedidos desconhecidos ficam anotados para o diagnóstico")
 	# Depois disso, um app de verdade conecta e conversa.
 	var client: WsClient = WsClient.new()
 	client.open("127.0.0.1", server.port)

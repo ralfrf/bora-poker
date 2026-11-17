@@ -8,3 +8,4 @@
 !ui/
 !tests/
 !deploy/prova.gd
+!deploy/remote_server.gd

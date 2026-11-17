@@ -1,9 +1,9 @@
-# Bora Poker sem tela em Linux, com o binário oficial do Godot.
-# Por enquanto a imagem só roda os testes; quando o servidor de salas existir, o
-# comando padrão passa a subir o servidor.
+# Bora Poker sem tela em Linux, com o binário oficial do Godot. O comando padrão sobe o
+# servidor de salas à distância na porta PORT; os testes rodam trocando o comando.
 #
 #   docker build -f deploy/Dockerfile -t bora-poker-testes .
-#   docker run --rm --memory=512m --memory-swap=512m --cpus=0.1 bora-poker-testes
+#   docker run --rm -p 10000:10000 --memory=512m --memory-swap=512m --cpus=0.1 bora-poker-testes
+#   docker run --rm --memory=512m --memory-swap=512m --cpus=0.1 bora-poker-testes godot --headless --path /app -s res://tests/run_tests.gd
 
 FROM debian:bookworm-slim
 
@@ -37,11 +37,12 @@ COPY --chown=jogo:jogo bots ./bots
 # A tela também entra: os testes do Wi-Fi e das telas carregam ui/.
 COPY --chown=jogo:jogo ui ./ui
 COPY --chown=jogo:jogo tests ./tests
-# Prova da hospedagem: eco WebSocket e página de teste na porta PORT, com os testes
-# rodando ao lado. No Render, o comando do serviço é:
-#   godot --headless --path /app -s res://deploy/prova.gd
-COPY --chown=jogo:jogo deploy/prova.gd ./deploy/prova.gd
+# O servidor de salas e a prova da hospedagem (eco WebSocket e página de teste, com os
+# testes rodando ao lado: godot --headless --path /app -s res://deploy/prova.gd).
+COPY --chown=jogo:jogo deploy/remote_server.gd deploy/prova.gd ./deploy/
 RUN chown jogo:jogo /app
 USER jogo
+ENV PORT=10000
+EXPOSE 10000
 
-CMD ["godot", "--headless", "--path", "/app", "-s", "res://tests/run_tests.gd"]
+CMD ["godot", "--headless", "--path", "/app", "-s", "res://deploy/remote_server.gd"]

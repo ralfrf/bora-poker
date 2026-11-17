@@ -56,6 +56,7 @@ const E_BAD_MESSAGE: String = "bad_message"   ## mensagem malformada ou desconhe
 const E_NO_HELLO: String = "no_hello"         ## falta a apresentação
 const E_NO_ROOM: String = "no_room"           ## sala inexistente ou fora de uma sala
 const E_REFUSED: String = "refused"           ## pedido recusado; o texto diz por quê
+const E_FULL: String = "full"              ## servidor sem vagas: o app mostra "Em manutenção" (SPEC 9.3)
 
 # Fases da sala.
 const LOBBY: String = "lobby"

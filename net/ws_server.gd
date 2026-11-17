@@ -70,7 +70,8 @@ var trust_forwarded: bool = false
 ## Responde os pedidos HTTP que não são de jogo:
 ## func(pedido: {method, path, headers}) -> {status, type, body}. Sem ele, 404.
 var http_handler: Callable = Callable()
-## Primeira linha dos últimos pedidos que não eram de jogo (para o diagnóstico).
+## Primeira linha dos últimos pedidos que não eram de jogo nem de uma rota conhecida
+## (para o diagnóstico).
 var stray: Array[String] = []
 ## Totais desde que abriu, para as medições e a lotação.
 var bytes_out: int = 0
@@ -289,14 +290,14 @@ func _read_request(peer: Peer, now: int) -> bool:
 		peer.last_ms = now
 		_events.append({"type": "connect", "peer": peer.id, "data": {}})
 		return true
-	if path != "/saude":
-		_note_stray(method, path)
 	var answer: Dictionary = {"status": "404 Not Found", "type": "text/plain; charset=utf-8",
 		"body": "não encontrado"}
 	if method == "":
 		answer = {"status": "400 Bad Request", "type": "text/plain; charset=utf-8", "body": ""}
 	elif http_handler.is_valid():
 		answer = http_handler.call({"method": method, "path": path, "headers": headers})
+	if str(answer.get("status", "")).begins_with("4"):
+		_note_stray(method, path)   # rota desconhecida: só esses interessam ao diagnóstico
 	_reply(peer, answer, method == "HEAD")
 	peer.closing = true
 	peer.since = now

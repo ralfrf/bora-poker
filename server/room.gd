@@ -43,6 +43,8 @@ const DEFAULT_CONFIG: Dictionary = {
 	"allow_empty": false,       # sala sem humanos continua aberta (simulações)
 	"bot_evaluations": 0,       # teto de simulação do Difícil (0 = o padrão)
 	"bot_style": "",            # força um estilo para todos os bots (simulações)
+	"watcher_cap": 0,           # teto de espectadores que contam (SPEC 4.3); 0 = sem teto
+	"empty_close_ms": 0,        # partida sem humanos espera isso antes de fechar (SPEC 6.5)
 }
 
 
@@ -73,6 +75,7 @@ class Member:
 	var rebuy_deadline: int = -1   ## prazo da oferta (tempo da sala); -1 sem prazo
 	var folds_hand: int = 0        ## desiste da mão com este número (Wi-Fi: o anfitrião sumiu)
 	var reacted_at: int = -1       ## relógio real da última reação (limite de frequência)
+	var watcher: bool = false      ## assiste por escolha ou voltou sem lugar: conta no teto (SPEC 4.3)
 
 
 var id: String = ""
@@ -113,6 +116,8 @@ var _held_until: Dictionary = {}   ## id -> fim do prazo das fichas guardadas (r
 var _held_by: Dictionary = {}      ## id -> {device, nick} de quem tem fichas guardadas
 var _pending_settings: Dictionary = {}
 var history: HandLog = HandLog.new()   ## as últimas mãos terminadas (SPEC 11.2)
+var _empty_since: int = -1         ## relógio real desde quando a partida está sem humanos
+var _last_offline: int = -1        ## relógio real da queda ou saída do último humano que saiu
 var _notes: Array = []             ## avisos da sala que vão na próxima mensagem "state"
 
 
@@ -226,9 +231,16 @@ func join(profile: Dictionary, spectate: bool = false) -> Dictionary:
 	# 16/11/2026). Exceções: quem caiu e tem fichas guardadas (entra assistindo e volta à
 	# mesa quando abrir lugar) e quem pede para assistir na sala de espera.
 	var held_id: String = _held_id(device, base)
+	# Teto à distância (SPEC 4.3): conta quem entra para assistir e quem volta sem lugar
+	# livre; não conta quem perdeu as fichas e continua assistindo.
+	var watching: bool = (spectate and phase == Protocol.LOBBY) or (held_id != "" and _free_seat() < 0)
+	if watching and int(_config["watcher_cap"]) > 0 and watchers() >= int(_config["watcher_cap"]):
+		return {"ok": false, "error": "já há %d pessoas assistindo" % int(_config["watcher_cap"]),
+			"id": "", "resumed": false}
 	var member: Member = _new_member(base, int(profile.get("avatar", 0)), false, held_id)
 	member.device = device
 	member.base_nick = base
+	member.watcher = watching
 	if held_id != "":
 		member.return_offer = true
 	elif not (spectate and phase == Protocol.LOBBY):
@@ -238,7 +250,20 @@ func join(profile: Dictionary, spectate: bool = false) -> Dictionary:
 			return {"ok": false, "error": _entry_error(refusal), "id": "", "resumed": false}
 	if owner_id == "":
 		_set_owner(member)
+		_empty_since = -1
 	return {"ok": true, "error": "", "id": member.id, "resumed": false}
+
+
+## Quantos espectadores contam no teto (SPEC 4.3).
+func watchers() -> int:
+	var count: int = 0
+	for member: Member in members.values():
+		# Quem voltou com fichas guardadas e ainda não escolheu também conta: o lugar
+		# livre pode ser tomado antes.
+		if ((member.watcher or member.return_offer) and member.seat < 0 and member.connected
+				and not member.is_bot):
+			count += 1
+	return count
 
 
 ## A conexão caiu (SPEC 6.2 e 6.3). Quem está sentado tem o lugar guardado por
@@ -316,6 +341,9 @@ func handle(member_id: String, message: Dictionary) -> void:
 ## Faz o tempo da sala andar: estouros de tempo, prazos, bots e a mão seguinte.
 func tick() -> void:
 	if phase == Protocol.ENDED:
+		return
+	if _empty_since >= 0 and _clock.now_ms() - _empty_since >= int(_config["empty_close_ms"]):
+		close(Protocol.R_EMPTY)
 		return
 	_expire_offline()
 	if phase == Protocol.ENDED:
@@ -811,7 +839,7 @@ func _step() -> bool:
 		return true
 	if table.hand_in_progress():
 		return _step_turn(now)
-	if now < _next_hand_at or hold_hands:
+	if now < _next_hand_at or hold_hands or _empty_since >= 0:
 		return false
 	if _walkover():
 		return true
@@ -949,8 +977,10 @@ func _check_over() -> bool:
 		return false
 	if table.format == Table.CLASSIC:
 		for member: Member in members.values():
+			# Quem assiste e pode voltar recomprando, ou voltou com fichas guardadas e
+			# ainda vai escolher, segura a partida.
 			if (not member.is_bot and member.seat < 0 and _present(member)
-					and table.can_return_with_rebuy(member.id)):
+					and (member.return_offer or table.can_return_with_rebuy(member.id))):
 				return false
 	close(Protocol.R_FINISHED)
 	return true
@@ -1156,6 +1186,7 @@ func _decline_rebuy(member: Member) -> void:
 ## Perdeu o lugar: vira espectador. Bot e quem já tinha saído deixam a sala.
 func _to_spectator(member: Member) -> void:
 	member.seat = -1
+	member.watcher = false   # perdeu as fichas e continua assistindo: não conta no teto
 	member.rebuy_offer = false
 	member.rebuy_deadline = -1
 	member.away = false
@@ -1170,6 +1201,8 @@ func _drop_member(member: Member, forfeit: bool) -> void:
 	member.forfeit = forfeit
 	if member.offline_since < 0:
 		member.offline_since = _clock.now_ms()
+	if not member.is_bot:
+		_last_offline = member.offline_since
 	if member.seat < 0:
 		members.erase(member.id)
 	elif table.format == Table.TOURNAMENT and table.hand_number > 0:
@@ -1212,10 +1245,21 @@ func _check_owner() -> void:
 			oldest = member
 	if oldest != null:
 		_set_owner(oldest)
+		_empty_since = -1
 		return
 	owner_id = ""
-	if not _config["allow_empty"]:
-		close(Protocol.R_EMPTY)
+	if _config["allow_empty"]:
+		return
+	# À distância a partida espera alguém voltar (SPEC 6.5), sem começar mão nova.
+	if phase == Protocol.PLAYING and int(_config["empty_close_ms"]) > 0:
+		if _empty_since < 0:
+			# Conta desde a queda (o lugar guardado só vence offline_ms depois), como as
+			# fichas guardadas.
+			_empty_since = _clock.now_ms()
+			if _last_offline >= 0:
+				_empty_since = mini(_empty_since, _last_offline)
+		return
+	close(Protocol.R_EMPTY)
 
 
 # ---------------------------------------------------------------- mensagens
