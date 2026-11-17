@@ -14,11 +14,13 @@ const PLATE_H: float = 36.0
 
 ## nick, stack, avatar, turn, fraction (0 a 1 do tempo que resta), folded, all_in,
 ## dealer, blind ("SB", "BB" ou vazio), rebuys (recompras feitas), tag (texto curto da última ação), winner,
-## away, empty.
+## away, empty, countdown ("1:45": tempo até o lugar ser liberado, em cima do avatar).
 var data: Dictionary = {}:
 	set(value):
 		data = value
-		modulate.a = 0.45 if (data.get("folded", false) or data.get("away", false)) else 1.0
+		var dim: bool = data.get("folded", false) or data.get("away", false)
+		# Com a contagem, menos apagado, para o tempo continuar legível.
+		modulate.a = (0.75 if data.has("countdown") else 0.45) if dim else 1.0
 		queue_redraw()
 ## Marcas do botão e do blind em cima do avatar (o seu lugar, que tem as cartas ao
 ## lado); nos outros ficam embaixo, do lado do centro da mesa.
@@ -119,6 +121,14 @@ func _draw() -> void:
 		Paint.timer_ring(self, center, r + 2.5, 3.5, fraction, ring_color, Color(0, 0, 0, 0.55))
 	elif winner:
 		draw_arc(center, r + 2.5, 0, TAU, 64, accent, 3.0, true)
+	# Quem caiu ou saiu: o tempo até o lugar ser liberado, em cima do avatar escurecido.
+	var countdown: String = String(data.get("countdown", ""))
+	if countdown != "":
+		draw_circle(center, r, Color(0, 0, 0, 0.62), true, -1.0, true)
+		var clock_font: Font = get_theme_font("strong", T)
+		var clock_size: int = get_theme_font_size("small", T)
+		draw_string(clock_font, Vector2(center.x - r, center.y + clock_size * 0.36), countdown,
+			HORIZONTAL_ALIGNMENT_CENTER, AVATAR, clock_size, text_color)
 
 	# Marcador de recompras no avatar, do lado de fora (no seu lugar, embaixo).
 	var rebuys: int = int(data.get("rebuys", 0))
@@ -178,6 +188,11 @@ func _tag(text: String, center: Vector2, max_w: float) -> void:
 		"All-in":
 			fill = get_theme_color("danger", T)
 			ink = get_theme_color("text", T)
+	# Texto comprido ("Reconectando…", nome de mão): a letra diminui um pouco antes de cortar.
+	var smallest: int = font_size - 3
+	while font_size > smallest \
+			and font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x > max_w - 12.0:
+		font_size -= 1
 	var label: String = _ellipsis(font, text, font_size, max_w - 12.0)
 	var w: float = font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x + 12.0
 	var pill: Rect2 = Rect2(center - Vector2(w, 14.0) / 2.0, Vector2(w, 14.0))

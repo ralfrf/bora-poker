@@ -115,7 +115,7 @@ var _state: Dictionary = {}
 var _seat_count: int = 8
 var _my_seat: int = -1
 var _tags: Dictionary = {}       # lugar -> texto da última ação
-var _countdowns: Dictionary = {} # lugar -> {base, ms, until, text}: quem saiu ou caiu
+var _countdowns: Dictionary = {} # lugar -> {ms, until, clock}: quem saiu ou caiu
 var _turn_total_ms: int = 0
 var _turn_left_ms: int = -1
 var _turn_seat: int = -1
@@ -266,46 +266,42 @@ func _process(delta: float) -> void:
 			_refresh_rebuy_text()
 
 
-## Quem saiu ou caiu e ainda ocupa o lugar: "Saiu" ou "Reconectando", com a contagem até
-## o lugar ser liberado quando o servidor manda remove_ms (torneio: 2 min de quem tocou
-## em "Sair"; clássico: 60 s de quem caiu).
+## Quem saiu ou caiu e ainda ocupa o lugar: a etiqueta diz "Saiu" ou "Reconectando…" e,
+## quando o servidor manda remove_ms (torneio: 2 min; clássico: 60 s de quem caiu), o
+## tempo até o lugar ser liberado aparece em cima do avatar. Devolve a etiqueta.
 func _countdown_tag(seat_index: int, member: Dictionary) -> String:
 	var base: String = "Saiu" if member.get("left", false) else "Reconectando…"
 	if not member.has("remove_ms"):
-		_countdowns[seat_index] = {"base": base, "ms": -1, "until": -1, "text": base}
+		_countdowns.erase(seat_index)
 		return base
 	var ms: int = int(member["remove_ms"])
 	var known: Dictionary = _countdowns.get(seat_index, {})
 	# A mesma mensagem desenhada de novo (troca de tamanho da tela) não reinicia a conta.
-	if known.get("base") != base or int(known.get("ms", -2)) != ms:
-		known = {"base": base, "ms": ms, "until": Time.get_ticks_msec() + ms}
-	known["text"] = _countdown_text(known)
+	if int(known.get("ms", -2)) != ms:
+		known = {"ms": ms, "until": Time.get_ticks_msec() + ms}
+	known["clock"] = _countdown_clock(known)
 	_countdowns[seat_index] = known
-	return known["text"]
+	return base
 
 
-static func _countdown_text(entry: Dictionary) -> String:
-	if int(entry["until"]) < 0:
-		return entry["base"]
+static func _countdown_clock(entry: Dictionary) -> String:
 	var left: int = ceili(maxi(0, int(entry["until"]) - Time.get_ticks_msec()) / 1000.0)
-	var clock: String = "%d:%02d" % [left / 60, left % 60]
-	# Curto, para caber na etiqueta embaixo da placa ("Reconectando 0:42" ficava cortado).
-	return ("Saiu · " if entry["base"] == "Saiu" else "Caiu · ") + clock
+	return "%d:%02d" % [left / 60, left % 60]
 
 
 ## A contagem anda a cada segundo, sem esperar a próxima mensagem do servidor.
 func _tick_countdowns() -> void:
 	for seat_index: int in _countdowns:
 		var entry: Dictionary = _countdowns[seat_index]
-		var text: String = _countdown_text(entry)
-		if text == entry["text"]:
+		var clock: String = _countdown_clock(entry)
+		if clock == entry["clock"]:
 			continue
+		entry["clock"] = clock
 		var slot: int = _slot_of(seat_index)
-		if slot < 0 or _seats[slot].data.get("tag") != entry["text"]:
+		if slot < 0 or not _seats[slot].data.has("countdown"):
 			continue
-		entry["text"] = text
 		var data: Dictionary = _seats[slot].data.duplicate()
-		data["tag"] = text
+		data["countdown"] = clock
 		_seats[slot].data = data
 
 
@@ -392,7 +388,7 @@ func render(state: Dictionary) -> void:
 		elif member.get("left", false) or not member.get("connected", true):
 			tag = _countdown_tag(seat_index, member)
 			counting[seat_index] = true
-		seat_view.data = {
+		var info: Dictionary = {
 			"nick": member.get("nick", ""), "avatar": member.get("avatar", 0),
 			"stack": entry.get("stack", 0), "turn": turn, "fraction": fraction,
 			"folded": entry.get("folded", false),
@@ -402,6 +398,9 @@ func render(state: Dictionary) -> void:
 			"tag": tag, "winner": winners.has(seat_index),
 			"away": member.get("away", false), "rebuys": int(member.get("rebuys", 0)),
 		}
+		if counting.has(seat_index) and _countdowns.has(seat_index):
+			info["countdown"] = _countdowns[seat_index]["clock"]
+		seat_view.data = info
 		var bet: int = int(entry.get("bet", 0))
 		if live and bet > 0:
 			bet_view.amount = bet
