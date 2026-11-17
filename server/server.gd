@@ -352,6 +352,9 @@ func _leave(session: Session) -> void:
 	session.room_id = ""
 	session.member_id = ""
 	room.leave(member_id)
+	if room.is_closed() and not room.final.is_empty():
+		# Era o último humano: a sala fechou e quem saiu também vê o placar.
+		_reply(session, room.final)
 	_reply(session, {"t": Protocol.LEFT, "reason": Protocol.R_LEFT})
 
 

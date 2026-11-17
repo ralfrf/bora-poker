@@ -19,7 +19,7 @@ const SLOTS: int = 10000           ## 100 vagas (centésimos; 100 = uma mesa de 
 const MAX_CONNECTIONS: int = 800
 const RATE: int = 20               ## mensagens por segundo por conexão
 const WATCHER_CAP: int = 3         ## SPEC 4.3
-const EMPTY_CLOSE_MS: int = 600000 ## SPEC 6.5
+const EMPTY_CLOSE_MS: int = 300000 ## SPEC 6.5: 5 min, como as fichas guardadas
 ## Batimento à distância: o app manda "ping" a cada 5 s (ui/app/remote_game.gd), não a
 ## cada 2 s como no Wi-Fi, para gastar menos banda; calado por 16 s, caiu.
 const SILENCE_MS: int = 16000

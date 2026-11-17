@@ -32,6 +32,8 @@ const AWAY_AFTER_TIMEOUTS: int = 2
 const MAX_STEPS_PER_TICK: int = 64
 ## Senha da sala, só à distância (SPEC 4.1 e 9.3): 4 dígitos, ou vazia.
 const PASSWORD_DIGITS: int = 4
+## O placar mostra no máximo esse tanto de gente (SPEC 11.2).
+const SCORE_ROWS: int = 10
 
 ## Prazos e ajustes que não são opção da sala. As simulações zeram as esperas.
 const DEFAULT_CONFIG: Dictionary = {
@@ -40,7 +42,7 @@ const DEFAULT_CONFIG: Dictionary = {
 	"bot_min_ms": 1000,         # o bot demora de 1 a 3 s para agir (SPEC 7)
 	"bot_max_ms": 3000,
 	"rebuy_ms": 0,              # prazo da oferta de recompra; 0 = sem prazo (SPEC 3.4)
-	"held_ms": 600000,          # fichas guardadas de quem saiu (SPEC 6.2)
+	"held_ms": 300000,          # fichas guardadas de quem saiu: 5 min (SPEC 6.2)
 	"offline_ms": 60000,        # lugar guardado de quem caiu (SPEC 6.2 e 6.3)
 	"allow_empty": false,       # sala sem humanos continua aberta (simulações)
 	"bot_evaluations": 0,       # teto de simulação do Difícil (0 = o padrão)
@@ -121,6 +123,7 @@ var history: HandLog = HandLog.new()   ## as últimas mãos terminadas (SPEC 11.
 var _empty_since: int = -1         ## relógio real desde quando a partida está sem humanos
 var _last_offline: int = -1        ## relógio real da queda ou saída do último humano que saiu
 var _notes: Array = []             ## avisos da sala que vão na próxima mensagem "state"
+var _departed: Dictionary = {}     ## id -> {at, avatar} de quem saiu da mesa (placar, SPEC 11.2)
 ## Senha (SPEC 9.3): fica só aqui; não vai nas opções, no state, na lista nem no retrato.
 var _password: String = ""
 
@@ -326,12 +329,16 @@ func announce() -> void:
 	_broadcast([])
 
 
-## O participante saiu (botão "Sair" ou conexão encerrada).
+## O participante saiu (botão "Sair"). Se era o último humano da sala (ninguém mais
+## sentado, assistindo ou reconectando), a sala fecha na hora com o placar, em vez de
+## esperar alguém voltar (pedido do dono, 17/11/2026).
 func leave(member_id: String) -> void:
 	var member: Member = members.get(member_id)
 	if member == null or phase == Protocol.ENDED:
 		return
 	_drop_member(member, false)
+	if phase == Protocol.PLAYING and not _config["allow_empty"] and not _other_humans(member_id):
+		close(Protocol.R_EMPTY)
 	if phase != Protocol.ENDED:
 		_broadcast([])
 		_run()
@@ -379,7 +386,8 @@ func handle(member_id: String, message: Dictionary) -> void:
 func tick() -> void:
 	if phase == Protocol.ENDED:
 		return
-	if _empty_since >= 0 and _clock.now_ms() - _empty_since >= int(_config["empty_close_ms"]):
+	if _empty_since >= 0 and (not _other_humans("")
+			or _clock.now_ms() - _empty_since >= int(_config["empty_close_ms"])):
 		close(Protocol.R_EMPTY)
 		return
 	_expire_offline()
@@ -592,6 +600,14 @@ func member_at(seat: int) -> Member:
 		if member.seat == seat:
 			return member
 	return null
+
+
+## Há outro humano na sala além desse (sentado, assistindo ou reconectando)?
+func _other_humans(member_id: String) -> bool:
+	for other: Member in members.values():
+		if not other.is_bot and other.id != member_id:
+			return true
+	return false
 
 
 ## Quantos humanos estão de fato na sala.
@@ -1269,10 +1285,12 @@ func _leave_table(member: Member) -> void:
 			if member.forfeit:
 				table.expire_held(member.id)
 			else:
-				# Os 10 minutos contam desde a queda (SPEC 6.2).
+				# Os 5 minutos contam desde a queda (SPEC 6.2).
 				var since: int = member.offline_since if member.offline_since >= 0 else _clock.now_ms()
 				_held_until[member.id] = since + int(_config["held_ms"])
 				_held_by[member.id] = {"device": member.device, "nick": member.base_nick}
+	if member.seat >= 0:
+		_departed[member.id] = {"at": _clock.now_ms(), "avatar": member.avatar}
 	member.seat = -1
 	member.rebuy_offer = false
 	member.rebuy_deadline = -1
@@ -1294,8 +1312,10 @@ func _check_owner() -> void:
 	owner_id = ""
 	if _config["allow_empty"]:
 		return
-	# À distância a partida espera alguém voltar (SPEC 6.5), sem começar mão nova.
-	if phase == Protocol.PLAYING and int(_config["empty_close_ms"]) > 0:
+	# À distância a partida espera até 5 min, sem começar mão nova, só enquanto ainda há
+	# humano na sala (reconectando, ou no torneio, que guarda o lugar). Sem nenhum, fecha
+	# na hora (pedido do dono, 17/11/2026).
+	if phase == Protocol.PLAYING and int(_config["empty_close_ms"]) > 0 and _other_humans(""):
 		if _empty_since < 0:
 			# Conta desde a queda (o lugar guardado só vence offline_ms depois), como as
 			# fichas guardadas.
@@ -1390,11 +1410,28 @@ func _send_to(member: Member, message: Dictionary, pack: Wire.StatePack = null) 
 			_send.call(member.id, message)
 
 
+## O placar (SPEC 11.2): quem está na sala (na mesa ou assistindo) e quem já saiu dela
+## (o motor guarda o registro com o que deixou), até os SCORE_ROWS mais recentes:
+## primeiro quem está na sala, depois quem saiu por último. Cada linha leva o apelido e o
+## avatar.
 func _scoreboard() -> Array:
 	var rows: Array = []
+	var gone: Array = []
 	for row: Dictionary in table.scoreboard():
-		row["nick"] = _names.get(row["id"], "")
-		rows.append(row)
+		if members.has(str(row["id"])):
+			rows.append(row)
+		else:
+			gone.append(row)
+	gone.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return int(_departed.get(a["id"], {}).get("at", 0)) > int(_departed.get(b["id"], {}).get("at", 0)))
+	rows.append_array(gone.slice(0, maxi(0, SCORE_ROWS - rows.size())))
+	for row: Dictionary in rows:
+		var key: String = str(row["id"])
+		row["nick"] = _names.get(key, "")
+		var member: Member = members.get(key)
+		row["avatar"] = member.avatar if member != null \
+			else int(_departed.get(key, {}).get("avatar", 0))
+	Table.sort_scoreboard(rows, table.format == Table.TOURNAMENT)
 	return rows
 
 

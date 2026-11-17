@@ -123,10 +123,24 @@ func _init(closed: Dictionary, room_members: Array, me: String) -> void:
 	my_id = me
 
 
+## Uma linha do placar do servidor como o Board desenha. O avatar vem da linha (o
+## servidor manda, inclusive de quem já saiu) ou da lista de pessoas da sala.
+static func board_row(row: Dictionary, room_members: Array, me: String) -> Dictionary:
+	var avatar: int = int(row.get("avatar", -1))
+	if avatar < 0:
+		avatar = 0
+		for member: Dictionary in room_members:
+			if member.get("id", "") == row.get("id", ""):
+				avatar = int(member.get("avatar", 0))
+	return {
+		"nick": row.get("nick", ""), "avatar": avatar, "me": row.get("id", "") == me,
+		"place": int(row.get("place", 0)),
+		"chips": int(row.get("chips", 0)) + int(row.get("held", 0)),
+		"net": int(row.get("net", 0)),
+	}
+
+
 func _build() -> void:
-	var avatars: Dictionary = {}
-	for member: Dictionary in members:
-		avatars[member.get("id", "")] = int(member.get("avatar", 0))
 	var podium: Array = final.get("podium", [])
 	var tournament: bool = not podium.is_empty()
 	for row: Dictionary in final.get("scoreboard", []):
@@ -137,12 +151,7 @@ func _build() -> void:
 	var my_row: Dictionary = {}
 	var top: Array = []
 	for row: Dictionary in final.get("scoreboard", []):
-		var entry: Dictionary = {
-			"nick": row.get("nick", ""), "avatar": avatars.get(row.get("id", ""), 0),
-			"me": row.get("id", "") == my_id, "place": int(row.get("place", 0)),
-			"chips": int(row.get("chips", 0)) + int(row.get("held", 0)),
-			"net": int(row.get("net", 0)),
-		}
+		var entry: Dictionary = board_row(row, members, my_id)
 		if entry["me"]:
 			my_row = entry
 		if tournament and entry["place"] >= 1 and entry["place"] <= 3:

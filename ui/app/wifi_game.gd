@@ -618,7 +618,7 @@ func set_avatar(avatar: int) -> void:
 
 ## Sai da mesa. Anfitrião com outro humano na sala: a sala passa para ele (na hora, ou
 ## quando a mão acabar) e devolve {}. Anfitrião sozinho: encerra e devolve o placar.
-## Convidado: avisa o servidor (as fichas ficam guardadas por 10 minutos) e devolve {}.
+## Convidado: avisa o servidor (as fichas ficam guardadas por 5 minutos) e devolve {}.
 func leave() -> Dictionary:
 	if not final.is_empty():
 		return final
@@ -696,10 +696,10 @@ func leave_question() -> Array[String]:
 		var room: Object = _server.rooms.get(room_id) if _server != null else null
 		if room != null and _heir_of(room) != "":
 			return ["Sair da sala?", "A partida continua no celular de outro jogador. " \
-				+ "Suas fichas ficam guardadas por 10 minutos.", "Sair"]
+				+ "Suas fichas ficam guardadas por 5 minutos.", "Sair"]
 		return ["Encerrar a sala?", "A partida termina para todos e cada um vê o placar.",
 			"Encerrar"]
-	return ["Sair da mesa?", "Suas fichas ficam guardadas por 10 minutos, se quiser voltar.",
+	return ["Sair da mesa?", "Suas fichas ficam guardadas por 5 minutos, se quiser voltar.",
 		"Sair"]
 
 

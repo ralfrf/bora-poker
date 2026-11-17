@@ -26,7 +26,8 @@ const MAX_BACKOFF_MS: int = 10000
 const PING_MS: int = 5000
 const SILENCE_MS: int = 13000
 const CONNECT_MS: int = 15000
-const FLUSH_MS: int = 300
+## Na saída, espera a resposta (e o placar, se a sala fechar) pela internet.
+const FLUSH_MS: int = 1500
 
 var link: Link = Link.CONNECTING
 var url: String = ""
@@ -231,7 +232,7 @@ func set_avatar(avatar: int) -> void:
 	super(avatar)
 
 
-## Sai da mesa: as fichas ficam guardadas por 10 minutos no servidor (SPEC 6.2).
+## Sai da mesa: as fichas ficam guardadas por 5 minutos no servidor (SPEC 6.2).
 func leave() -> Dictionary:
 	if not final.is_empty():
 		return final
@@ -240,7 +241,7 @@ func leave() -> Dictionary:
 	while Time.get_ticks_msec() < until and _ws != null and _ws.is_open():
 		for message: Dictionary in _ws.poll():
 			_track(message)
-			if message.get("t") == Protocol.LEFT:
+			if message.get("t") in [Protocol.LEFT, Protocol.CLOSED]:
 				return final
 		OS.delay_msec(10)
 	return final
@@ -276,7 +277,10 @@ func failure() -> String:
 
 
 func leave_question() -> Array[String]:
-	return ["Sair da mesa?", "Suas fichas ficam guardadas por 10 minutos, se quiser voltar.",
+	if str(last_state.get("room", {}).get("phase", "")) == Protocol.PLAYING and not others_here():
+		return ["Encerrar a sala?", "Você é o último jogador. A sala fecha e o placar aparece.",
+			"Encerrar"]
+	return ["Sair da mesa?", "Suas fichas ficam guardadas por 5 minutos, se quiser voltar.",
 		"Sair"]
 
 

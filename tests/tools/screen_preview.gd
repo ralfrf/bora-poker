@@ -3,7 +3,7 @@ extends Control
 ## Nada é gravado no perfil de verdade.
 ##   --screen=profile | profile_edit | home | setup | setup_t | game | showdown |
 ##            rebuy | watching | ranking | history | result | result_t | live | settings |
-##            help | rules | reactions | spectator | paused | held | held_seat |
+##            help | rules | reactions | spectator | paused | held | held_seat | score |
 ##            servers | servers_wake | servers_full | servers_advanced | remote_rooms |
 ##            remote_password | remote_wake | remote_empty | remote_setup | remote_waiting
 ##   --seed=N  (game e showdown: muda a mesa sorteada)
@@ -75,7 +75,7 @@ func _ready() -> void:
 			screen = _game("game", seats, false, true)
 		"history":
 			screen = _game("history", seats)
-		"reactions", "spectator", "paused", "held", "held_seat":
+		"reactions", "spectator", "paused", "held", "held_seat", "score":
 			# Etapa 4, parte B: painel e balões de reação, quem assiste com "Sentar" e mesa pausada.
 			screen = _game("game", seats, false, false, screen_name)
 		"watching":
@@ -292,6 +292,8 @@ func _game(kind: String, seats: int, watching: bool = false, ranking: bool = fal
 			var seated: Array = target["table"]["seats"]
 			table_view.call("show_reaction", int(seated[1]["seat"]), 1)
 			table_view.call("show_reaction", int(seated[-1]["seat"]), 7)
+		if extra == "score":
+			screen.open_score()
 		if ranking:
 			screen.open_ranking()
 		if kind == "history":

@@ -13,6 +13,7 @@ const TableView := preload("res://ui/table/table_view.gd")
 const Dialog := preload("res://ui/widgets/dialog.gd")
 const RankingSheet := preload("res://ui/widgets/ranking_sheet.gd")
 const HistorySheet := preload("res://ui/widgets/history_sheet.gd")
+const ScoreSheet := preload("res://ui/widgets/score_sheet.gd")
 const ReactionSheet := preload("res://ui/widgets/reaction_sheet.gd")
 const Protocol := preload("res://server/protocol.gd")
 
@@ -21,6 +22,7 @@ var _table: TableView = null
 var _dialog: Dialog = null
 var _ranking: RankingSheet = null
 var _history: HistorySheet = null
+var _score: ScoreSheet = null
 var _reactions: ReactionSheet = null
 var _members: Array = []
 var _done: bool = false
@@ -44,13 +46,12 @@ func _ready() -> void:
 	_table.leave_requested.connect(_ask_leave)
 	_table.help_requested.connect(func() -> void: _ranking.open())
 	_table.history_requested.connect(open_history)
+	_table.score_requested.connect(open_score)
 	_table.reactions_requested.connect(open_reactions)
 	_table.sit_requested.connect(func() -> void: _game.sit_at(-1))
 	_table.return_requested.connect(func() -> void:
 		_offer_seen = false
 		_check_offer(_game.last_state.get("you", {})))
-	_table.pause_requested.connect(func(on: bool) -> void:
-		_game.owner(Protocol.CMD_PAUSE if on else Protocol.CMD_RESUME))
 	_table.reactions_enabled = _game.has_reactions()
 	add_child(_table)
 	_ranking = RankingSheet.new()
@@ -59,6 +60,9 @@ func _ready() -> void:
 	_history = HistorySheet.new()
 	_history.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(_history)
+	_score = ScoreSheet.new()
+	_score.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(_score)
 	_reactions = ReactionSheet.new()
 	_reactions.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_reactions.chosen.connect(func(index: int) -> void:
@@ -92,6 +96,7 @@ func _process(_delta: float) -> void:
 				_members = message.get("room", {}).get("members", [])
 				_table.render(message)
 				_check_offer(message.get("you", {}))
+				_score.update_from(message, _game.my_id)
 				# Com o histórico aberto, uma mão que termina já entra na lista.
 				if _history.visible:
 					for event: Dictionary in message.get("events", []):
@@ -191,6 +196,7 @@ func open_ranking() -> void:
 func _ask_leave() -> void:
 	_ranking.close()
 	_history.close()
+	_score.close()
 	var question: Array[String] = _game.leave_question()
 	_dialog_kind = "leave"
 	_dialog.dismissable = true
@@ -217,6 +223,8 @@ func _finish(final: Dictionary) -> void:
 func go_back() -> bool:
 	if _reactions.visible:
 		_reactions.close()
+	elif _score.visible:
+		_score.close()
 	elif _history.visible:
 		_history.close()
 	elif _ranking.visible:
@@ -227,3 +235,10 @@ func go_back() -> bool:
 	else:
 		_ask_leave()
 	return true
+
+
+## Abre o placar de agora por cima da mesa (todos os modos; usado também nas fotos).
+func open_score() -> void:
+	_ranking.close()
+	_history.close()
+	_score.open(_game.last_state, _game.my_id)

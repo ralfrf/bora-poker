@@ -111,41 +111,96 @@ func test_watcher_cap_counts_only_chosen_watchers() -> void:
 	assert_eq(room.watchers(), 3, "o teto continua contando só os 3 que escolheram assistir")
 
 
-func test_empty_playing_room_waits_ten_minutes() -> void:
+func test_room_waits_only_while_a_human_is_reconnecting() -> void:
 	var clock: Clock = Clock.new(true)
 	var room: Room = _room({"seats": 3, "turn_seconds": 15, "bots": [1]}, clock,
-		{"empty_close_ms": 600000})
+		{"empty_close_ms": 300000})
 	var a: String = _join(room, "Ana")["id"]
 	room.handle(a, {"t": Protocol.START})
 	room.tick()
 	room.drop_connection(a)
-	for _i in 30:
+	for _i in 10:
 		clock.advance(5000)
 		room.tick()
-	assert_false(room.is_closed(), "sem humanos, a partida espera")
-	assert_eq(room.owner_id, "", "ninguém para ser dono")
-	var hand: int = room.table.hand_number
-	for _i in 80:   # 550 s desde a queda: as fichas guardadas valem 10 minutos
-		clock.advance(5000)
-		room.tick()
-	assert_false(room.is_closed(), "ainda dentro dos 10 minutos")
-	assert_eq(room.table.hand_number, hand, "sem humanos, não começa mão nova")
+	assert_false(room.is_closed(), "Ana ainda está reconectando: a partida espera")
 	var back: Dictionary = _join(room, "Ana")
 	assert_true(back["ok"], "voltou: " + str(back["error"]))
+	assert_true(back["resumed"], "mesmo lugar")
 	assert_eq(room.owner_id, back["id"], "quem volta vira dono")
-	room.handle(back["id"], {"t": Protocol.RETURN_CHOICE, "keep": true})
-	assert_true(room.members[back["id"]].seat >= 0, "voltou à mesa com as fichas de antes")
-	clock.advance(600000)
-	room.tick()
-	assert_false(room.is_closed(), "com alguém de volta, não fecha")
-	room.leave(back["id"])
-	clock.advance(599000)
-	room.tick()
-	assert_false(room.is_closed())
-	clock.advance(1000)
-	room.tick()
-	assert_true(room.is_closed(), "10 minutos sem humanos: fecha")
+	# Cai de novo e não volta: passados os 60 s do lugar guardado, não sobra humano.
+	room.drop_connection(a)
+	for _i in 13:
+		clock.advance(5000)
+		room.tick()
+	assert_true(room.is_closed(), "sem nenhum humano na sala: fecha na hora")
 	assert_eq(room.final.get("reason"), Protocol.R_EMPTY)
+
+
+func test_tournament_waits_five_minutes_for_the_gone_player() -> void:
+	var clock: Clock = Clock.new(true)
+	var room: Room = _room({"seats": 3, "format": "tournament", "turn_seconds": 15, "bots": [1, 1]},
+		clock, {"empty_close_ms": 300000})
+	var a: String = _join(room, "Ana")["id"]
+	room.handle(a, {"t": Protocol.START})
+	room.tick()
+	room.drop_connection(a)
+	for _i in 59:
+		clock.advance(5000)
+		room.tick()
+	assert_false(room.is_closed(), "no torneio o lugar fica: a sala espera até 5 minutos")
+	clock.advance(5000)
+	room.tick()
+	assert_true(room.is_closed(), "5 minutos: fecha")
+
+
+func test_last_human_leaving_closes_with_ten_row_score() -> void:
+	var clock: Clock = Clock.new(true)
+	var room: Room = _room({"seats": 9, "turn_seconds": 0, "keep_open": true}, clock,
+		{"empty_close_ms": 300000})
+	var ana: String = _join(room, "Ana")["id"]
+	var bia: String = _join(room, "Bia")["id"]
+	room.handle(ana, {"t": Protocol.START})
+	room.tick()
+	# Doze pessoas passam pela mesa e saem; os bots ocupam os lugares.
+	for i in 12:
+		var guest: Dictionary = _join(room, "Visita%d" % i)
+		assert_true(guest["ok"], str(guest["error"]))
+		clock.advance(1000)
+		room.leave(guest["id"])
+	for _i in 3:
+		room.handle(ana, {"t": Protocol.OWNER, "cmd": Protocol.CMD_ADD_BOT, "level": 1})
+	var score: Array = room._room_info()["score"]
+	assert_eq(score.size(), Room.SCORE_ROWS, "no máximo 10 no placar")
+	var nicks: Array = score.map(func(r: Dictionary) -> String: return r["nick"])
+	for nick: String in ["Ana", "Bia", "Visita11", "Visita10"]:
+		assert_true(nicks.has(nick), "no placar: " + nick)
+	assert_false(nicks.has("Visita0"), "quem saiu há mais tempo fica de fora")
+	assert_true(score.all(func(r: Dictionary) -> bool: return r.has("avatar")), "cada linha leva o avatar")
+	room.leave(bia)
+	assert_false(room.is_closed(), "ainda há um humano")
+	room.leave(ana)
+	assert_true(room.is_closed(), "o último humano saiu: fecha na hora, sem esperar")
+	assert_eq(room.final.get("reason"), Protocol.R_EMPTY)
+	assert_true((room.final["scoreboard"] as Array).size() <= Room.SCORE_ROWS)
+	var final_nicks: Array = room.final["scoreboard"].map(func(r: Dictionary) -> String: return r["nick"])
+	assert_true(final_nicks.has("Ana") and final_nicks.has("Bia"), "quem saiu por último aparece")
+
+
+func test_last_human_leaving_gets_the_score() -> void:
+	var transport: LocalTransport = LocalTransport.new()
+	var server: Server = Server.new(transport, Clock.new(true), {"room": FAST.merged({"empty_close_ms": 300000})})
+	var ana: LocalTransport.Endpoint = transport.connect_client()
+	ana.send({"t": Protocol.HELLO, "v": Protocol.VERSION, "nick": "Ana", "avatar": 3, "device": "a"})
+	ana.send({"t": Protocol.CREATE_ROOM, "options": {"seats": 2, "bots": [1]}})
+	ana.send({"t": Protocol.START})
+	server.tick()
+	ana.poll()
+	ana.send({"t": Protocol.LEAVE})
+	server.tick()
+	var types: Array = ana.poll().map(func(m: Dictionary) -> String: return m["t"])
+	assert_true(types.has(Protocol.CLOSED), "quem saiu por último recebe o placar")
+	assert_eq(types.back(), Protocol.LEFT)
+	assert_true(server.rooms.is_empty(), "a sala fechou")
 
 
 func test_lobby_without_humans_closes_at_once() -> void:

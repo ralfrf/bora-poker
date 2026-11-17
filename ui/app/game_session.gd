@@ -191,3 +191,11 @@ static func sentence(text: String) -> String:
 		return ""
 	text = text.left(1).to_upper() + text.substr(1)
 	return text if text.ends_with(".") or text.ends_with("!") else text + "."
+
+
+## Há outro humano na sala, pelo último state (sentado, assistindo ou reconectando)?
+func others_here() -> bool:
+	for member: Dictionary in last_state.get("room", {}).get("members", []):
+		if not member.get("bot", false) and str(member.get("id", "")) != my_id:
+			return true
+	return false

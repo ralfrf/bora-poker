@@ -131,8 +131,8 @@ func test_after_60s_seat_is_freed_and_chips_held() -> void:
 	var held: int = room.table.cashbox.held(c)
 	assert_true(held > 0, "fichas guardadas")
 	assert_true(room.table.is_balanced())
-	# Volta em 5 minutos: entra assistindo, com a oferta.
-	_clock.advance(240000)
+	# Volta dentro dos 5 minutos (4 desde a queda): entra assistindo, com a oferta.
+	_clock.advance(180000)
 	var back: Dictionary = _join(room, "Caio", "dev-c")
 	assert_eq(back["id"], c, "recupera o id das fichas guardadas")
 	assert_eq(room.members[c].seat, -1, "espera a escolha")

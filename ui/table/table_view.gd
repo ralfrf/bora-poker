@@ -19,14 +19,14 @@ signal back_requested
 signal help_requested
 ## Toque no botão do histórico: abrir as últimas mãos.
 signal history_requested
+## Tocou no placar.
+signal score_requested
 ## Toque no balão: abrir o painel de reações.
 signal reactions_requested
 ## Quem assiste tocou em "Sentar".
 signal sit_requested
 ## Quem voltou com fichas guardadas toca em "Voltar à mesa" (reabre a pergunta).
 signal return_requested
-## O dono tocou em pausar (true) ou retomar (false).
-signal pause_requested(on: bool)
 
 const CardView := preload("res://ui/widgets/card_view.gd")
 const SeatView := preload("res://ui/widgets/seat_view.gd")
@@ -41,6 +41,7 @@ const ChipFlight := preload("res://ui/widgets/chip_flight.gd")
 const SafeArea := preload("res://ui/theme/safe_area.gd")
 const Sfx := preload("res://ui/app/sfx.gd")
 const ListIcon := preload("res://ui/widgets/list_icon_button.gd")
+const ScoreIcon := preload("res://ui/widgets/score_icon_button.gd")
 const GlyphButton := preload("res://ui/widgets/glyph_button.gd")
 const ReactionView := preload("res://ui/widgets/reaction_view.gd")
 const Prefs := preload("res://ui/app/prefs.gd")
@@ -91,6 +92,7 @@ var _marks: BoardMarks = null
 var _exit: Button = null
 var _help: Button = null
 var _history: Button = null
+var _score: Button = null
 var _my_turn: bool = false
 var _warned: bool = false
 var _banner: AmountView = null
@@ -107,7 +109,6 @@ var reactions_enabled: bool = false
 ## A mesa espera o anfitrião voltar: os relógios ficam parados (SPEC 6.4).
 var frozen: bool = false
 var _react: GlyphButton = null
-var _pause: GlyphButton = null
 var _react_ready_at: int = 0
 
 var _state: Dictionary = {}
@@ -199,16 +200,14 @@ func _ready() -> void:
 	_history = ListIcon.new()
 	_history.pressed.connect(func() -> void: history_requested.emit())
 	add_child(_history)
+	_score = ScoreIcon.new()
+	_score.pressed.connect(func() -> void: score_requested.emit())
+	add_child(_score)
 	_react = GlyphButton.new("react")
 	_react.tooltip_text = "Reações"
 	_react.pressed.connect(func() -> void: reactions_requested.emit())
 	_react.visible = false
 	add_child(_react)
-	_pause = GlyphButton.new("pause")
-	_pause.pressed.connect(func() -> void:
-		pause_requested.emit(not bool(_state.get("room", {}).get("paused", false))))
-	_pause.visible = false
-	add_child(_pause)
 	_prompt = VBoxContainer.new()
 	_prompt.add_theme_constant_override("separation", 8)
 	_prompt.alignment = BoxContainer.ALIGNMENT_END
@@ -401,12 +400,8 @@ func render(state: Dictionary) -> void:
 
 	_show_banner(result, members)
 	_show_column(table, you, me, members)
-	# Reações só para quem está sentado; pausa só para o dono, com a partida em andamento.
+	# Reações só para quem está sentado.
 	_refresh_react()
-	var owner: bool = str(room.get("owner", "")) == str(you.get("id", "-"))
-	_pause.visible = owner and room.get("phase", "") == "playing"
-	_pause.glyph = "play" if room.get("paused", false) else "pause"
-	_pause.tooltip_text = "Retomar a mesa" if room.get("paused", false) else "Pausar a mesa"
 
 	# Os blinds aparecem na mesa, na marca de quem pôs (SB e BB) e nas fichas dele.
 	_info.text = "Mão %d" % int(table.get("hand", 0))
@@ -581,9 +576,7 @@ func open_bet_sheet() -> void:
 
 func _waiting_text(table: Dictionary, you: Dictionary, members: Dictionary) -> String:
 	if _state.get("room", {}).get("paused", false):
-		var owner: bool = str(_state["room"].get("owner", "")) == str(you.get("id", "-"))
-		return "Mesa pausada. Para retomar, toque no botão no alto da mesa." if owner \
-			else "Mesa pausada pelo dono."
+		return "Mesa pausada pelo dono."
 	if _my_seat < 0 and you.has("return_offer"):
 		return "Fichas guardadas. Você volta quando abrir um lugar."
 	if _my_seat < 0:
@@ -793,10 +786,11 @@ func _layout() -> void:
 	_help.position = _exit.position + Vector2(_exit.size.x + 8.0, 0)
 	_history.size = Vector2(40, 40)
 	_history.position = _help.position + Vector2(48.0, 0)
+	_score.size = Vector2(40, 40)
+	# No canto de cima à direita da mesa (onde ficava a pausa), longe da sua placa.
+	_score.position = Vector2(area.end.x - MARGIN - 40.0, area.position.y + MARGIN).round()
 	_react.size = Vector2(40, 40)
 	_react.position = Vector2(area.end.x - MARGIN - 40.0, area.end.y - MARGIN - 40.0).round()
-	_pause.size = Vector2(40, 40)
-	_pause.position = Vector2(area.end.x - MARGIN - 40.0, area.position.y + MARGIN).round()
 	if _banner.visible:
 		_banner.place_at(_banner_point())
 
