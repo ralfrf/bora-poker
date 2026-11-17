@@ -288,7 +288,9 @@ func _member_text(member: Dictionary, room: Dictionary) -> String:
 		parts.append("Você")
 	if member.get("id") == room.get("owner"):
 		parts.append("dono da sala")
-	if not member.get("connected", true):
+	if member.get("left", false):
+		parts.append("saiu")
+	elif not member.get("connected", true):
 		parts.append("reconectando…")
 	return " · ".join(parts) if not parts.is_empty() else "Na mesa"
 

@@ -383,3 +383,27 @@ func test_snapshot_restores_room_elsewhere() -> void:
 	assert_true(copy.table.hand_number >= hands + 3, "a partida segue no outro servidor")
 	assert_true(copy.table.is_balanced())
 	assert_eq(copy.bot_errors, 0)
+
+
+func test_leave_button_shows_left_not_reconnecting() -> void:
+	# Clássico, no meio da mão: o lugar espera a mão acabar, mas quem tocou em "Sair" saiu.
+	var parts: Array = _three({"turn_seconds": 0})
+	var room: Room = parts[0]
+	var a: String = parts[1]
+	var b: String = parts[2]
+	var c: String = parts[3]
+	assert_true(room.table.hand_in_progress())
+	room.leave(c)
+	assert_true(_member_info(a, c).get("left", false), "os outros veem que saiu")
+	assert_false(_member_info(a, c).get("connected", true))
+	# Quem só caiu continua "reconectando".
+	room.drop_connection(b)
+	assert_false(_member_info(a, b).get("left", false), "queda não é saída")
+	# Torneio: o lugar fica guardado (SPEC 6.3), mas aparece como quem saiu.
+	var tour: Array = _three({"format": "tournament", "turn_seconds": 0})
+	var t_room: Room = tour[0]
+	t_room.leave(tour[3])
+	assert_true(_member_info(tour[1], tour[3]).get("left", false), "torneio: saiu")
+	# Voltou: deixa de aparecer como quem saiu.
+	_join(t_room, "Caio", "dev-c")
+	assert_false(_member_info(tour[1], tour[3]).get("left", false), "voltou")

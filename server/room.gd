@@ -82,6 +82,7 @@ class Member:
 	var folds_hand: int = 0        ## desiste da mão com este número (Wi-Fi: o anfitrião sumiu)
 	var reacted_at: int = -1       ## relógio real da última reação (limite de frequência)
 	var watcher: bool = false      ## assiste por escolha ou voltou sem lugar: conta no teto (SPEC 4.3)
+	var quit: bool = false         ## tocou em "Sair" (não caiu): os outros veem "Saiu", não "Reconectando…"
 
 
 var id: String = ""
@@ -258,6 +259,7 @@ func join(profile: Dictionary, spectate: bool = false) -> Dictionary:
 		back.gone = false
 		back.leaving = false
 		back.forfeit = false
+		back.quit = false
 		if back.seat >= 0:
 			_notes.append({"type": "online", "seat": back.seat})
 		_check_owner()
@@ -360,6 +362,7 @@ func leave(member_id: String) -> void:
 	var member: Member = members.get(member_id)
 	if member == null or phase == Protocol.ENDED:
 		return
+	member.quit = true
 	_drop_member(member, false)
 	if phase == Protocol.PLAYING and not _config["allow_empty"] and not _other_humans(member_id):
 		close(Protocol.R_EMPTY)
@@ -522,7 +525,7 @@ func snapshot(with_hand: bool = false) -> Dictionary:
 			"avatar": member.avatar, "device": member.device, "bot": member.is_bot,
 			"level": member.level, "style": member.style, "seat": member.seat,
 			"order": member.order, "away": member.away, "timeouts": member.timeouts,
-			"gone": member.gone, "connected": member.connected,
+			"gone": member.gone, "connected": member.connected, "quit": member.quit,
 			"offline_ms": now - member.offline_since if member.offline_since >= 0 else -1,
 			"rebuy_offer": member.rebuy_offer,
 			"rebuy_ms": member.rebuy_deadline - _now() if member.rebuy_deadline >= 0 else -1,
@@ -583,6 +586,7 @@ func restore(saved: Dictionary) -> String:
 		member.timeouts = int(raw.get("timeouts", 0))
 		member.gone = bool(raw.get("gone", false))
 		member.connected = bool(raw.get("connected", true))
+		member.quit = bool(raw.get("quit", false))
 		member.rebuy_offer = bool(raw.get("rebuy_offer", false))
 		var rebuy_ms: int = int(raw.get("rebuy_ms", -1))
 		member.rebuy_deadline = _now() + rebuy_ms if rebuy_ms >= 0 else -1
@@ -1457,6 +1461,9 @@ func _room_info() -> Dictionary:
 			"connected": member.connected and member.offline_since < 0,
 			"rebuys": table.rebuys_of(member.id),
 		})
+		if member.quit:
+			# Saiu pelo botão e o lugar ainda espera a mão acabar (ou o torneio guarda).
+			list.back()["left"] = true
 	# score: o placar de agora (como se a mão fosse cancelada). No Wi-Fi, se o anfitrião
 	# sumir, cada celular calcula o placar final a partir dele (SPEC 6.4).
 	return {

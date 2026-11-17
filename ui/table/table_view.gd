@@ -343,6 +343,8 @@ func render(state: Dictionary) -> void:
 		var tag: String = _tags.get(seat_index, "")
 		if shown.has(seat_index):
 			tag = String(shown[seat_index].get("name", tag))
+		elif member.get("left", false):
+			tag = "Saiu"
 		elif not member.get("connected", true):
 			tag = "Reconectando…"
 		seat_view.data = {
