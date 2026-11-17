@@ -4,11 +4,12 @@ extends RefCounted
 ## uma mesa não diz vem do tema, por isso a Salão é um dicionário quase vazio.
 ##
 ## colors: as mesmas chaves do tema (felt_center, felt_edge, rail, rail_hi, rail_line,
-##   felt_line) e mais pattern (cor da estampa, com transparência).
+##   felt_line), mais pattern (cor da estampa, com transparência) e board_ink (cor das
+##   marcas das cartas da mesa, para feltro claro).
 ## style (inteiros):
 ##   rail_kind:    0 couro acolchoado, 1 madeira envernizada
 ##   felt_pattern: 0 liso, 1 naipes pequenos em fileiras, 2 treliça de losangos com
-##                 um naipe maior em cada
+##                 um naipe maior em cada, 3 naipes grandes em grupos (enfeite)
 ## lane_alpha: força da linha interna do feltro (0 a 1).
 
 const SALAO: String = "salao"
@@ -36,6 +37,17 @@ const ALL: Dictionary = {
 		},
 		"style": {"rail_kind": 0, "felt_pattern": 2},
 		"lane_alpha": 0.32,
+	},
+	"perola": {
+		"name": "Pérola",
+		"colors": {
+			"felt_center": "#F4F5F7", "felt_edge": "#AEB4BD",
+			"rail": "#1C1F24", "rail_hi": "#9DA4AF",
+			"rail_line": "#D3D8DF", "felt_line": "#6E7682",
+			"pattern": "#7A82904A", "board_ink": "#1E232B",
+		},
+		"style": {"rail_kind": 0, "felt_pattern": 3},
+		"lane_alpha": 0.3,
 	},
 }
 

@@ -8,6 +8,11 @@ const T: String = "Tokens"
 
 var card: Vector2 = Vector2(44, 62)
 var gap: float = 4.0
+## A mesa escolhida (ui/theme/tables.gd): board_ink troca a cor das marcas (feltro claro).
+var skin: Dictionary = {}:
+	set(value):
+		skin = value
+		queue_redraw()
 
 
 func _init() -> void:
@@ -16,6 +21,9 @@ func _init() -> void:
 
 func _draw() -> void:
 	var ink: Color = get_theme_color("felt_line", T)
+	var colors: Dictionary = skin.get("colors", {})
+	if colors.has("board_ink"):
+		ink = Color.html(colors["board_ink"])
 	var font: Font = get_theme_font("strong", T)
 	var font_size: int = get_theme_font_size("small", T)
 	var radius: int = int(get_theme_constant("radius_card", T) * card.x / 50.0)

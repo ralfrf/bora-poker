@@ -114,6 +114,7 @@ var table_skin: Dictionary = {}:
 		table_skin = value
 		if _felt != null:
 			_felt.skin = value
+			_marks.skin = value
 var _react: GlyphButton = null
 var _react_ready_at: int = 0
 
@@ -142,6 +143,7 @@ func _ready() -> void:
 	add_child(_info)
 	_marks = BoardMarks.new()
 	_marks.card = BOARD_CARD
+	_marks.skin = table_skin
 	add_child(_marks)
 	for i in 5:
 		var card: CardView = CardView.new()

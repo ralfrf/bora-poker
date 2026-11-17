@@ -227,6 +227,8 @@ func _draw_felt(shape: int) -> void:
 			_draw_suit_pattern(shape)
 		2:
 			_draw_diamond_pattern(shape)
+		3:
+			_draw_suit_groups()
 
 	# Sombra que a borda faz no feltro.
 	var shade_in: PackedVector2Array = contour(felt_rect, shape, -14.0)
@@ -296,6 +298,22 @@ func _draw_diamond_pattern(shape: int) -> void:
 			if not Geometry2D.is_point_in_polygon(at, inside):
 				continue
 			Paint.suit(self, posmod((i + 3 * j) / 2, 4), at, 12.0, ink)
+
+
+## Naipes grandes em grupos, como enfeite: espadas e copas no alto à esquerda, paus e
+## ouros no alto à direita e os quatro juntos embaixo, no meio.
+func _draw_suit_groups() -> void:
+	var ink: Color = _color("pattern")
+	var size: float = clampf(felt_rect.size.y * 0.085, 16.0, 30.0)
+	var gap: float = size * 1.15
+	var groups: Array = [[Vector2(0.28, 0.3), [3, 2]], [Vector2(0.72, 0.3), [0, 1]],
+		[Vector2(0.5, 0.76), [3, 2, 1, 0]]]
+	for group: Array in groups:
+		var suits: Array = group[1]
+		var center: Vector2 = felt_rect.position + felt_rect.size * Vector2(group[0])
+		for k in suits.size():
+			var at: Vector2 = center + Vector2((k - (suits.size() - 1) / 2.0) * gap, 0)
+			Paint.suit(self, int(suits[k]), at, size, ink)
 
 
 ## Liga contornos vizinhos (todos com o mesmo número de pontos) em faixas de
