@@ -344,7 +344,7 @@ func is_expired(id: String) -> bool:
 
 
 ## Torneio: o jogador sai e entrega as fichas, divididas em partes iguais entre quem
-## continua (o resto de centavos vai aos primeiros lugares depois do dele). Fica com a
+## continua (o resto de centavos vai, um a um, a quem já tem mais fichas). Fica com a
 ## pior colocação de agora; no mano a mano, o outro é o campeão. Só entre mãos. Usos:
 ## ausente há mais de 60 s no mano a mano, e quem tocou em "Sair" e não voltou em 2
 ## minutos (SPEC 6.3).
@@ -362,6 +362,15 @@ func concede(index: int) -> Dictionary:
 		var other: int = (index + offset) % MAX_SEATS
 		if other != index and alive.has(other):
 			others.append(other)
+	# A sobra da divisão vai a quem já tem mais fichas (pedido do dono); empate fica com
+	# quem vem primeiro depois do lugar de quem saiu.
+	var order: Dictionary = {}
+	for i in others.size():
+		order[others[i]] = i
+	others.sort_custom(func(a: int, b: int) -> bool:
+		var stack_a: int = seat_at(a).stack
+		var stack_b: int = seat_at(b).stack
+		return stack_a > stack_b or (stack_a == stack_b and order[a] < order[b]))
 	var amount: int = loser.stack
 	var share: int = amount / others.size()
 	var rest: int = amount % others.size()

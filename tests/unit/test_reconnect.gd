@@ -331,11 +331,38 @@ func test_engine_concede() -> void:
 	var places: Array = split["events"].filter(func(e: Dictionary) -> bool:
 		return e["type"] == "eliminated").map(func(e: Dictionary) -> int: return e["place"])
 	assert_eq(places, [4], "a pior colocação de agora")
-	var got: Array = []
-	for index: int in [2, 4, 0]:   # a ordem a partir do lugar de quem saiu
-		got.append(table.seat_at(index).stack - before[index])
-	assert_eq(got, [stack / 3 + (1 if stack % 3 > 0 else 0), stack / 3 + (1 if stack % 3 > 1 else 0),
-		stack / 3], "partes iguais; o resto vai aos primeiros depois dele")
+	# Partes iguais; a sobra vai, um centavo cada, a quem já tinha mais fichas (empate:
+	# quem vem primeiro depois do lugar de quem saiu: 2, 4, 0).
+	var richest: Array = [2, 4, 0]
+	richest.sort_custom(func(x: int, y: int) -> bool:
+		return before[x] > before[y] or (before[x] == before[y] and richest.find(x) < richest.find(y)))
+	for rank in richest.size():
+		var index: int = richest[rank]
+		assert_eq(table.seat_at(index).stack - before[index], stack / 3 + (1 if rank < stack % 3 else 0),
+			"lugar %d (%dº em fichas)" % [index, rank + 1])
+	# Caso com sobra garantida: 100 centavos para 3 = 34, 33, 33; o 34 vai ao mais rico.
+	var odd: Table = Table.new()
+	odd.configure({"format": Table.TOURNAMENT, "starting_stack": 100, "small_blind": 1,
+		"big_blind": 2})
+	for index: int in [0, 1, 2, 3]:
+		odd.add_player(index, "j%d" % index)
+	odd.start_hand({"seed": 3})
+	while odd.hand_in_progress():
+		odd.apply_action(odd.hand.to_act, Hand.FOLD)
+	var leaver: int = -1
+	for index: int in [0, 1, 2, 3]:
+		if odd.seat_at(index).stack == 100:
+			leaver = index
+			break
+	var rest: Array = [0, 1, 2, 3].filter(func(i: int) -> bool: return i != leaver)
+	var top: int = rest[0]
+	for index: int in rest:
+		if odd.seat_at(index).stack > odd.seat_at(top).stack:
+			top = index
+	var top_before: int = odd.seat_at(top).stack
+	assert_true(odd.concede(leaver)["ok"])
+	assert_eq(odd.seat_at(top).stack - top_before, 34, "a sobra fica com quem tem mais fichas")
+	assert_true(odd.is_balanced())
 	assert_false(table.is_over(), "o torneio continua com 3")
 	assert_eq(table.concede(1)["ok"], false, "quem já saiu não entrega de novo")
 	var classic: Table = Table.new()
