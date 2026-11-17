@@ -2,8 +2,9 @@ extends "res://ui/screens/screen.gd"
 ## Amigos à distância, primeiro passo (SPEC 9.3): os servidores, cada um com a % de
 ## lotação. A pergunta ao Servidor 1 começa assim que a tela abre, o que também o acorda
 ## (ele dorme depois de 15 minutos sem ninguém); sem resposta em 3 s
-## aparece "Conectando ao servidor…" com o aviso. Cheio, ou sem resposta depois de 2 minutos: "Em
-## manutenção". O Servidor 2 ainda não existe e aparece sempre "Em breve".
+## aparece "Conectando ao servidor…" com o aviso. Cheio: "Cheio" (e a frase embaixo); sem
+## resposta depois de 2 minutos: "Em manutenção". O Servidor 2 ainda não existe e aparece
+## sempre "Em breve".
 ## Em "Avançado" dá para usar um servidor WebSocket próprio; o endereço do oficial não
 ## aparece na tela.
 
@@ -116,7 +117,7 @@ func _refresh() -> void:
 			first.detail = "Conectando ao servidor…"
 		LoadProbe.State.READY:
 			if probe.full:
-				first.detail = "Em manutenção"
+				first.detail = "Cheio"
 			else:
 				first.detail = "%d%% de lotação" % probe.pct
 				first.badge = "%d%%" % probe.pct
