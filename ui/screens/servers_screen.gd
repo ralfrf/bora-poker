@@ -51,7 +51,7 @@ func _build() -> void:
 	add_child(_back)
 	_title = Label.new()
 	_title.theme_type_variation = "TitleLabel"
-	_title.text = "À distância"
+	_title.text = "Online"
 	add_child(_title)
 	_status = Label.new()
 	_status.theme_type_variation = "StrongLabel"

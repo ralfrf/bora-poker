@@ -78,10 +78,10 @@ func _build() -> void:
 	add_child(_subtitle)
 	var group: ButtonGroup = ButtonGroup.new()
 	var entries: Array = [
-		[Profile.MODE_OFFLINE, "Offline", "Você contra bots, sem internet", ModeCard.ICON_BOTS],
+		[Profile.MODE_OFFLINE, "Offline", "Vs bots com diferentes níveis e personalidades", ModeCard.ICON_BOTS],
 		[Profile.MODE_WIFI, "Mesma rede",
 			"Dica: Alguém também pode compartilhar a internet para jogarem juntos.", ModeCard.ICON_WIFI],
-		[Profile.MODE_ONLINE, "À distância", "Amigos em qualquer lugar", ModeCard.ICON_WORLD],
+		[Profile.MODE_ONLINE, "Online", "Partidas com pessoas de qualquer lugar", ModeCard.ICON_WORLD],
 	]
 	for entry: Array in entries:
 		var mode: String = entry[0]

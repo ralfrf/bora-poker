@@ -27,8 +27,10 @@ const SettingsScreen := preload("res://ui/screens/settings_screen.gd")
 const HelpScreen := preload("res://ui/screens/help_screen.gd")
 const ShopScreen := preload("res://ui/screens/shop_screen.gd")
 const Ads := preload("res://ui/app/ads.gd")
+const LoadProbe := preload("res://net/load_probe.gd")
 
 const FADE: float = 0.14
+const WAKE_EVERY_MS: int = 600000
 
 var profile: Profile = Profile.new()
 var _screen: Control = null
@@ -36,6 +38,8 @@ var _last_choice: Dictionary = {}
 var _session: RefCounted = null   ## a partida em andamento (para fechar a rede ao sair)
 var _remote_url: String = ""      ## o servidor à distância escolhido
 var _remote_name: String = ""
+var _waker: LoadProbe = null      ## a pergunta que acorda o Servidor 1 já na tela inicial
+var _woke_at: int = -WAKE_EVERY_MS
 
 
 func _ready() -> void:
@@ -110,7 +114,27 @@ func _show_profile(first: bool) -> void:
 	_show(screen)
 
 
+## A tela inicial já acorda o Servidor 1 (SPEC 9.3): uma pergunta só, de ~200 bytes, e
+## no máximo uma a cada 10 minutos (o Render dorme depois de 15 sem ninguém). Sem
+## internet, falha calada.
+func _wake_server() -> void:
+	var now: int = Time.get_ticks_msec()
+	if _waker != null or now - _woke_at < WAKE_EVERY_MS:
+		return
+	_woke_at = now
+	_waker = LoadProbe.new(profile.server_url)
+	_waker.once = true
+
+
+func _process(_delta: float) -> void:
+	if _waker != null:
+		_waker.poll()
+		if _waker.finished():
+			_waker = null
+
+
 func _show_home() -> void:
+	_wake_server()
 	var screen: HomeScreen = HomeScreen.new(profile)
 	screen.edit_profile.connect(_show_profile.bind(false))
 	screen.play.connect(_on_mode)

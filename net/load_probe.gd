@@ -139,6 +139,16 @@ func poll() -> void:
 			_failed(now)
 
 
+## Uma pergunta só (a tela inicial acorda o servidor sem insistir): depois da primeira
+## resposta ou da primeira falha, para.
+var once: bool = false
+
+
+## Já parou de perguntar (só com once).
+func finished() -> bool:
+	return once and _attempt_at < 0 and _next_at == 1 << 62
+
+
 ## Fotos e testes de tela: fixa um estado e para de perguntar.
 func pretend(new_state: State, new_pct: int = 0, new_full: bool = false) -> void:
 	close()
@@ -184,11 +194,14 @@ func _finish(now: int) -> void:
 	pct = clampi(int(data.get("pct", 0)), 0, 100)
 	full = bool(data.get("full", false))
 	state = State.READY
-	_next_at = now + REFRESH_MS
+	_next_at = 1 << 62 if once else now + REFRESH_MS
 
 
 func _failed(now: int) -> void:
 	_close_attempt()
+	if once:
+		_next_at = 1 << 62
+		return
 	if _answered:
 		# Respondia e parou (reiniciou, ou foi suspenso): volta a "acordando" e conta de
 		# novo os 2 minutos até "Em manutenção".

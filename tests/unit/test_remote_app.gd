@@ -394,3 +394,29 @@ func test_load_probe_back_to_waking_when_server_stops() -> void:
 		probe.poll(), func() -> bool: return probe.state != LoadProbe.State.READY))
 	assert_eq(probe.state, LoadProbe.State.WAKING, "parou de responder: acordando de novo")
 	probe.close()
+
+
+func test_load_probe_once_asks_a_single_time() -> void:
+	var clock: Clock = Clock.new(true)
+	var silent: TCPServer = TCPServer.new()   # aceita a conexão e nunca responde
+	silent.listen(0, "127.0.0.1")
+	var probe: LoadProbe = LoadProbe.new("ws://127.0.0.1:%d" % silent.get_local_port(), clock)
+	probe.once = true
+	probe.poll()
+	assert_false(probe.finished(), "perguntando")
+	clock.advance(LoadProbe.ATTEMPT_MS + 1)
+	probe.poll()
+	assert_true(probe.finished(), "sem resposta: desiste sem insistir")
+	clock.advance(LoadProbe.GIVE_UP_MS)
+	probe.poll()
+	assert_true(probe.finished(), "e não pergunta de novo")
+	silent.stop()
+	var host: RemoteHost = RemoteHost.new(null, {"room": FAST})
+	assert_eq(host.listen(0, "127.0.0.1"), OK)
+	var awake: LoadProbe = LoadProbe.new("ws://127.0.0.1:%d" % host.ws.port)
+	awake.once = true
+	assert_true(_spin(func() -> void:
+		host.tick()
+		awake.poll(), func() -> bool: return awake.finished()))
+	assert_eq(awake.state, LoadProbe.State.READY, "respondeu uma vez e parou")
+	host.ws.stop()
