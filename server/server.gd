@@ -6,11 +6,13 @@ extends RefCounted
 ## de tempos em tempos.
 ##
 ## O transporte só precisa ter: poll() -> [{type, peer, data}], send(peer, mensagem) e
-## drop(peer).
+## drop(peer). O de rede tem também send_state(peer, mensagem, pacote), que manda o
+## `state` pelo protocolo enxuto (server/wire.gd).
 
 const Room := preload("res://server/room.gd")
 const Protocol := preload("res://server/protocol.gd")
 const Clock := preload("res://server/clock.gd")
+const Wire := preload("res://server/wire.gd")
 
 const DEFAULT_MAX_ROOMS: int = 20
 const MAX_DEVICE: int = 64
@@ -92,6 +94,7 @@ func restore_room(saved: Dictionary) -> String:
 		return checked["error"]
 	var room: Room = Room.new(room_id, checked["options"], _clock, _deliver.bind(room_id),
 		_room_config, _seed_source)
+	room.send_state = _deliver_state.bind(room_id)
 	var problem: String = room.restore(saved)
 	if problem != "":
 		return problem
@@ -191,6 +194,7 @@ func _create_room(session: Session, data: Dictionary) -> void:
 	var room_id: String = _new_code()
 	var room: Room = Room.new(
 		room_id, options, _clock, _deliver.bind(room_id), _room_config, _seed_source)
+	room.send_state = _deliver_state.bind(room_id)
 	rooms[room_id] = room
 	_enter(session, room, false)
 
@@ -276,6 +280,18 @@ func _deliver(member_id: String, message: Dictionary, room_id: String) -> void:
 		if session != null:
 			session.room_id = ""
 			session.member_id = ""
+
+
+## O `state` de um participante, com as partes públicas do lance já prontas.
+func _deliver_state(member_id: String, message: Dictionary, pack: Wire.StatePack,
+		room_id: String) -> void:
+	var key: String = _key(room_id, member_id)
+	if not _routes.has(key):
+		return
+	if _transport.has_method("send_state"):
+		_transport.call("send_state", _routes[key], message, pack)
+	else:
+		_transport.call("send", _routes[key], message)
 
 
 func _reply(session: Session, message: Dictionary) -> void:

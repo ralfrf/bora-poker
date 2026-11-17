@@ -2,7 +2,7 @@ extends RefCounted
 ## Nomes das mensagens do protocolo (SPEC 9.1). Toda mensagem é um dicionário JSON com
 ## o tipo no campo "t". Valores sempre em centavos inteiros; cartas são inteiros de 0 a 51.
 
-const VERSION: int = 1
+const VERSION: int = 2   ## 2: protocolo enxuto (server/wire.gd)
 
 # Do app para o servidor.
 const HELLO: String = "hello"               ## {v, nick, avatar, device}

@@ -9,6 +9,7 @@ extends RefCounted
 const Codec := preload("res://net/codec.gd")
 const Clock := preload("res://server/clock.gd")
 const Protocol := preload("res://server/protocol.gd")
+const Wire := preload("res://server/wire.gd")
 
 const PING_MS: int = 2000
 const SILENCE_MS: int = 6000
@@ -27,6 +28,7 @@ var _since: int = 0
 var _last_heard: int = 0
 var _last_ping: int = 0
 var _last_poll: int = -1
+var _room_cache: Dictionary = {}   # o último `room` recebido (protocolo enxuto)
 
 
 func _init(clock: Clock = null) -> void:
@@ -35,8 +37,14 @@ func _init(clock: Clock = null) -> void:
 
 ## Começa a conectar em ws://host:porta. O resultado aparece em status, depois de poll().
 func open(host: String, port: int) -> Error:
+	return open_url("ws://%s:%d" % [host, port])
+
+
+## Começa a conectar num endereço completo (ws:// ou wss://).
+func open_url(address: String) -> Error:
 	close()
-	url = "ws://%s:%d" % [host, port]
+	url = address
+	_room_cache = {}
 	_ws = WebSocketPeer.new()
 	_ws.inbound_buffer_size = MAX_MESSAGE
 	_ws.outbound_buffer_size = 65536
@@ -71,20 +79,26 @@ func poll() -> Array[Dictionary]:
 		if now - _since > CONNECT_MS:
 			_lose()
 		return messages
-	if state != WebSocketPeer.STATE_OPEN:
-		_lose()
-		return messages
-	if status == Status.CONNECTING:
+	if status == Status.CONNECTING and state == WebSocketPeer.STATE_OPEN:
 		status = Status.OPEN
 		_last_heard = now
+	# O que chegou antes do fechamento (expulsão, sala encerrada) ainda é entregue.
 	while _ws.get_available_packet_count() > 0:
 		var packet: PackedByteArray = _ws.get_packet()
 		_last_heard = now
-		if not _ws.was_string_packet():
-			continue
-		var message: Dictionary = Codec.decode(packet.get_string_from_utf8())
+		var message: Dictionary = {}
+		if _ws.was_string_packet():
+			message = Codec.decode(packet.get_string_from_utf8())
+		else:
+			message = Wire.decode(packet, _room_cache)
+		# Um `state` completo que veio por fora do pacote também atualiza o room guardado.
+		if message.get("t") == Protocol.STATE and message.get("room") is Dictionary:
+			_room_cache["room"] = (message["room"] as Dictionary).duplicate(true)
 		if not message.is_empty() and message.get("t") != Protocol.PONG:
 			messages.append(message)
+	if state != WebSocketPeer.STATE_OPEN:
+		_lose()
+		return messages
 	if now - _last_ping >= PING_MS:
 		_last_ping = now
 		_ws.send_text(Codec.encode({"t": Protocol.PING}))

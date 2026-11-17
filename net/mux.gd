@@ -31,6 +31,17 @@ func send(peer: int, message: Dictionary) -> void:
 	_parts[peer % STRIDE].call("send", peer / STRIDE, message)
 
 
+## O `state` pelo protocolo enxuto, quando o transporte da conexão sabe mandar assim.
+func send_state(peer: int, message: Dictionary, pack: RefCounted) -> void:
+	var part: Object = _parts[peer % STRIDE]
+	@warning_ignore("integer_division")
+	var inner: int = peer / STRIDE
+	if part.has_method("send_state"):
+		part.call("send_state", inner, message, pack)
+	else:
+		part.call("send", inner, message)
+
+
 ## IP da conexão, quando o transporte dela sabe ("" no transporte local).
 func peer_ip(peer: int) -> String:
 	var part: Object = _parts[peer % STRIDE]

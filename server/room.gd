@@ -16,6 +16,7 @@ const View := preload("res://server/view.gd")
 const HandLog := preload("res://server/hand_log.gd")
 const Protocol := preload("res://server/protocol.gd")
 const Clock := preload("res://server/clock.gd")
+const Wire := preload("res://server/wire.gd")
 const Bot := preload("res://bots/bot.gd")
 const Roster := preload("res://bots/roster.gd")
 
@@ -90,6 +91,9 @@ var tap: Callable = Callable()     ## testes: vê tudo o que a sala entrega (id,
 
 var _clock: Clock = null
 var _send: Callable = Callable()
+## func(participante, mensagem, pacote): o servidor de salas liga isto para o `state`
+## ir pelo protocolo enxuto (server/wire.gd). Sem ele, vai por _send.
+var send_state: Callable = Callable()
 var _seed_source: Callable = Callable()
 var _config: Dictionary = {}
 var _crypto: Crypto = Crypto.new()
@@ -1224,8 +1228,10 @@ func _broadcast(events: Array) -> void:
 	history.note(all, table, _hand_ids, _names)
 	var info: Dictionary = _room_info()
 	var table_view: Dictionary = _table_view()
+	# Protocolo enxuto (SPEC 9.1): a parte pública vai compactada uma vez para todos.
+	var pack: Wire.StatePack = Wire.StatePack.new(info, table_view, all) if send_state.is_valid() else null
 	for member: Member in members.values():
-		_send_to(member, _state_for(member, info, table_view, all))
+		_send_to(member, _state_for(member, info, table_view, all), pack)
 
 
 func _state_for(member: Member, info: Dictionary, table_view: Dictionary, events: Array) -> Dictionary:
@@ -1281,15 +1287,19 @@ func _room_info() -> Dictionary:
 	}
 
 
-func _send_to(member: Member, message: Dictionary) -> void:
+## pack: as partes públicas do lance, para o transporte de rede não montá-las de novo.
+func _send_to(member: Member, message: Dictionary, pack: Wire.StatePack = null) -> void:
 	if tap.is_valid():
 		tap.call(member.id, message)
 	if member.is_bot:
 		if message["t"] == Protocol.STATE:
 			member.view = message
 			member.bot.observe(message)
-	elif member.connected and member.offline_since < 0 and _send.is_valid():
-		_send.call(member.id, message)
+	elif member.connected and member.offline_since < 0:
+		if pack != null:
+			send_state.call(member.id, message, pack)
+		elif _send.is_valid():
+			_send.call(member.id, message)
 
 
 func _scoreboard() -> Array:

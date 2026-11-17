@@ -12,6 +12,7 @@ const Discovery := preload("res://net/discovery.gd")
 const WifiGame := preload("res://ui/app/wifi_game.gd")
 const Clock := preload("res://server/clock.gd")
 const Protocol := preload("res://server/protocol.gd")
+const Wire := preload("res://server/wire.gd")
 
 const FAST: Dictionary = {"hand_gap_ms": 0, "showdown_gap_ms": 0, "bot_min_ms": 0,
 	"bot_max_ms": 0, "bot_evaluations": 120}
@@ -180,6 +181,157 @@ func test_client_detects_silent_server() -> void:
 		client.poll()
 	assert_eq(client.status, WsClient.Status.LOST, "6 s sem ouvir nada: perdida")
 	server.stop()
+
+
+## Um pedido HTTP comum (o detector de portas do Render, um robô da internet) recebe
+## resposta HTTP, sem erro, e a porta continua atendendo o jogo.
+func test_stray_http_request_gets_plain_answer() -> void:
+	var server: WsServer = WsServer.new()
+	assert_eq(server.listen(0, "127.0.0.1"), OK)
+	server.http_handler = func(request: Dictionary) -> Dictionary:
+		if request["path"] == "/saude":
+			return {"status": "200 OK", "type": "text/plain", "body": "ok"}
+		return {"status": "404 Not Found", "type": "text/plain", "body": "não encontrado"}
+	for case: Array in [["GET /saude HTTP/1.1\r\nHost: x\r\nUser-Agent: y\r\n\r\n", "200 OK", "ok"],
+			["GET / HTTP/1.1\r\nHost: x\r\nUser-Agent: y\r\n\r\n", "404", "não encontrado"],
+			["oi\r\n\r\n", "400", ""]]:
+		var raw: StreamPeerTCP = StreamPeerTCP.new()
+		raw.connect_to_host("127.0.0.1", server.port)
+		var answer: PackedByteArray = PackedByteArray()
+		var sent: Array = [false]
+		_spin(func() -> void:
+			server.poll()
+			raw.poll()
+			if raw.get_status() == StreamPeerTCP.STATUS_CONNECTED:
+				if not sent[0]:
+					raw.put_data((case[0] as String).to_utf8_buffer())
+					sent[0] = true
+				var available: int = raw.get_available_bytes()
+				if available > 0:
+					answer.append_array(raw.get_data(available)[1]),
+			func() -> bool: return sent[0] and raw.get_status() != StreamPeerTCP.STATUS_CONNECTED)
+		var text: String = answer.get_string_from_utf8()
+		assert_true(text.begins_with("HTTP/1.1 " + case[1]), "resposta HTTP: " + text.left(40))
+		assert_true(text.ends_with("\r\n\r\n" + case[2]), "corpo da resposta")
+	assert_eq(server.stray, ["GET /", "(pedido inválido)"] as Array[String],
+		"os pedidos ficam anotados para o diagnóstico, menos a verificação de saúde")
+	# Depois disso, um app de verdade conecta e conversa.
+	var client: WsClient = WsClient.new()
+	client.open("127.0.0.1", server.port)
+	var events: Array = []
+	var got: Array = []
+	var step: Callable = func() -> void:
+		events.append_array(server.poll())
+		got.append_array(client.poll())
+	assert_true(_spin(step, func() -> bool: return client.is_open() and not events.is_empty()),
+		"conectou depois dos pedidos estranhos")
+	server.send(events[0]["peer"], {"t": "x", "v": 3})
+	assert_true(_spin(step, func() -> bool: return not got.is_empty()), "mensagem chegou")
+	assert_eq(got[0].get("v"), 3)
+	assert_eq(server.peer_count(), 1, "só o app ficou conectado")
+	server.stop()
+
+
+## Protocolo enxuto (SPEC 9.1): o `state` chega inteiro ao app pela rede, com `room` só
+## quando muda, e as mensagens grandes chegam compactadas.
+func test_lean_state_over_websocket() -> void:
+	var server: WsServer = WsServer.new()
+	server.listen(0, "127.0.0.1")
+	var client: WsClient = WsClient.new()
+	client.open("127.0.0.1", server.port)
+	var events: Array = []
+	var got: Array = []
+	var step: Callable = func() -> void:
+		events.append_array(server.poll())
+		got.append_array(client.poll())
+	_spin(step, func() -> bool: return client.is_open() and not events.is_empty())
+	var peer: int = events[0]["peer"]
+	var room: Dictionary = {"id": "ABCD", "members": [{"id": "m1", "nick": "Ana"}], "phase": "lobby"}
+	var table: Dictionary = {"seq": 1, "seats": [{"seat": 0, "stack": 2000}]}
+	var before: int = server.bytes_out
+	server.send_state(peer, {"you": {"id": "m1", "cards": [3, 51]}},
+		Wire.StatePack.new(room, table, [{"type": "deal"}]))
+	var first_size: int = server.bytes_out - before
+	before = server.bytes_out
+	server.send_state(peer, {"you": {"id": "m1"}},
+		Wire.StatePack.new(room.duplicate(true), {"seq": 2, "seats": []}, []))
+	assert_true(server.bytes_out - before < first_size, "o segundo vai sem room")
+	var history: Array = []
+	for i in 60:
+		history.append({"hand": i, "text": "mão de exemplo com bastante texto repetido"})
+	before = server.bytes_out
+	server.send(peer, {"t": "hands", "hands": history})
+	assert_true(server.bytes_out - before < JSON.stringify(history).length() / 4,
+		"mensagem grande vai compactada")
+	assert_true(_spin(step, func() -> bool: return got.size() >= 3), "chegaram as três")
+	assert_eq(got[0], {"t": "state", "room": room, "table": table,
+		"you": {"id": "m1", "cards": [3, 51]}, "events": [{"type": "deal"}]}, "foto completa")
+	assert_eq(got[1]["room"], room, "room remontado no app")
+	assert_eq(got[1]["table"]["seq"], 2)
+	assert_eq(got[2]["hands"].size(), 60)
+	assert_eq(got[2]["hands"][59]["hand"], 59, "números voltam inteiros")
+	server.stop()
+
+
+## Expulso ou sala encerrada: a última mensagem chega antes de a conexão fechar.
+func test_last_message_arrives_before_drop() -> void:
+	var server: WsServer = WsServer.new()
+	server.listen(0, "127.0.0.1")
+	var client: WsClient = WsClient.new()
+	client.open("127.0.0.1", server.port)
+	var events: Array = []
+	var got: Array = []
+	var step: Callable = func() -> void:
+		events.append_array(server.poll())
+		got.append_array(client.poll())
+	_spin(step, func() -> bool: return client.is_open() and not events.is_empty())
+	client.send({"t": Protocol.PING})   # algo por ler no servidor na hora de fechar
+	var big: Array = []
+	for i in 400:
+		big.append("linha %d de um placar comprido" % i)
+	server.send(events[0]["peer"], {"t": Protocol.CLOSED, "reason": "x", "scoreboard": big})
+	server.drop(events[0]["peer"])
+	assert_true(_spin(step, func() -> bool: return client.status == WsClient.Status.LOST),
+		"a conexão fecha")
+	assert_eq(got.size(), 1, "a mensagem final chegou")
+	assert_eq(got[0].get("scoreboard", []).size(), 400)
+	assert_eq(server.peer_count(), 0)
+	server.stop()
+
+
+## O "pong" logo depois de outra mensagem não sai: ela já mostrou que o servidor vive.
+func test_pong_skipped_right_after_other_message() -> void:
+	var clock: Clock = Clock.new(true)
+	var server: WsServer = WsServer.new(clock)
+	server.listen(0, "127.0.0.1")
+	var client: WsClient = WsClient.new()
+	client.open("127.0.0.1", server.port)
+	var events: Array = []
+	_spin(func() -> void:
+		events.append_array(server.poll())
+		client.poll(), func() -> bool: return client.is_open() and not events.is_empty())
+	var peer: int = events[0]["peer"]
+	server.send(peer, {"t": "x"})
+	var before: int = server.bytes_out
+	clock.advance(WsServer.PONG_SKIP_MS - 1)
+	server.send(peer, {"t": Protocol.PONG})
+	assert_eq(server.bytes_out, before, "pong logo depois de outra mensagem fica de fora")
+	clock.advance(1)
+	server.send(peer, {"t": Protocol.PONG})
+	assert_true(server.bytes_out > before, "sem nada recente, o pong sai")
+	server.stop()
+
+
+func test_wire_rejects_broken_frames() -> void:
+	var cache: Dictionary = {}
+	var frame: PackedByteArray = Wire.StatePack.new({"id": "A"}, {"seq": 1}, []).frame({}, false)
+	assert_eq(Wire.decode(frame, cache), {}, "sem room guardado não monta a foto")
+	var good: PackedByteArray = Wire.StatePack.new({"id": "A"}, {"seq": 1}, []).frame({}, true)
+	assert_eq(Wire.decode(good, cache)["room"], {"id": "A"})
+	assert_eq(Wire.decode(frame, cache)["room"], {"id": "A"}, "depois usa o guardado")
+	for broken: PackedByteArray in [PackedByteArray(), PackedByteArray([9, 1, 2]),
+			good.slice(0, 12), PackedByteArray([1, 255, 255, 255, 127, 0, 0, 0, 0])]:
+		assert_eq(Wire.decode(broken, {}), {}, "quadro estragado é ignorado")
 
 
 func test_discovery_announce_and_expire() -> void:
