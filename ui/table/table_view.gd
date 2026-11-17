@@ -523,7 +523,7 @@ func _show_column(table: Dictionary, you: Dictionary, me: Dictionary,
 		"sit":
 			# Quem assiste e pode sentar (SPEC 4.3): sala aberta ou quem já jogou aqui.
 			_prompt_text.text = "Você está assistindo. Há um lugar livre." + (
-				" Sentar conta como recompra." if you.get("sit_rebuy", false) else "")
+				" Sentar conta como recompra: antes, um anúncio." if you.get("sit_rebuy", false) else "")
 			_prompt_main.set_content("Sentar", -1)
 			_prompt_alt.visible = false
 		"return":

@@ -48,7 +48,7 @@ func _ready() -> void:
 	_table.history_requested.connect(open_history)
 	_table.score_requested.connect(open_score)
 	_table.reactions_requested.connect(open_reactions)
-	_table.sit_requested.connect(func() -> void: _game.sit_at(-1))
+	_table.sit_requested.connect(_on_sit)
 	_table.return_requested.connect(func() -> void:
 		_offer_seen = false
 		_check_offer(_game.last_state.get("you", {})))
@@ -148,13 +148,14 @@ func _check_offer(you: Dictionary) -> void:
 	if offer.get("can_initial", false):
 		_dialog.dismissable = false
 		_dialog.ask("Voltar para a mesa",
-			"Suas fichas guardadas: %s. Ou volte com as fichas iniciais: %s%s." % [
+			"Suas fichas guardadas: %s. Ou volte com as fichas iniciais: %s%s. Veja um anúncio e volte." % [
 				Money.format(before), Money.format(initial),
 				" (conta como recompra)" if initial > before else ""],
 			["Com as minhas", "Com as iniciais"])
 	else:
 		_dialog.dismissable = true
-		_dialog.ask("Voltar para a mesa", "Suas fichas guardadas: %s." % Money.format(before),
+		_dialog.ask("Voltar para a mesa",
+			"Suas fichas guardadas: %s. Veja um anúncio e volte." % Money.format(before),
 			["Voltar", "Só assistir"])
 
 
@@ -169,10 +170,12 @@ func _on_dialog(index: int) -> void:
 					_finish(final)
 		"return":
 			var offer: Dictionary = _game.last_state.get("you", {}).get("return_offer", {})
-			if offer.get("can_initial", false):
-				_game.return_choice(index == 0)
-			elif index == 0:
-				_game.return_choice(true)
+			if offer.get("can_initial", false) or index == 0:
+				var keep: bool = index == 0 or not offer.get("can_initial", false)
+				# Voltar à mesa depois de sair (não quem só reconectou) passa por um vídeo.
+				Ads.rewarded(func(watched: bool) -> void:
+					if watched and not _done:
+						_game.return_choice(keep))
 	_dialog_kind = ""
 
 
@@ -210,6 +213,17 @@ func _on_rebuy(accept: bool) -> void:
 		Ads.rewarded(func(watched: bool) -> void:
 			if watched and not _done:
 				_game.rebuy(true))
+
+
+## Sentar depois de ter jogado aqui conta como recompra: o vídeo vem antes, como na
+## recompra. Sentar pela primeira vez (sala aberta) não tem anúncio.
+func _on_sit() -> void:
+	if not _game.last_state.get("you", {}).get("sit_rebuy", false):
+		_game.sit_at(-1)
+		return
+	Ads.rewarded(func(watched: bool) -> void:
+		if watched and not _done:
+			_game.sit_at(-1))
 
 
 func _finish(final: Dictionary) -> void:

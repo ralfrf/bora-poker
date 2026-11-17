@@ -53,7 +53,7 @@ const DEFAULT_CONFIG: Dictionary = {
 	"bot_style": "",            # força um estilo para todos os bots (simulações)
 	"watcher_cap": 0,           # teto de espectadores que contam (SPEC 4.3); 0 = sem teto
 	"empty_close_ms": 0,        # partida sem humanos espera isso antes de fechar (SPEC 6.5)
-	"ad_max_ms": 60000,         # "Em anúncio" some sozinho depois disso, se o app não avisar o fim
+	"ad_max_ms": 30000,         # "Em anúncio" some sozinho depois disso, se o app não avisar o fim
 }
 
 
