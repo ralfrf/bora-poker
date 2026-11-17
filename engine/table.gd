@@ -343,29 +343,41 @@ func is_expired(id: String) -> bool:
 	return seat != null and seat.expired
 
 
-## Torneio, mano a mano: o jogador entrega todas as fichas ao outro, que é o campeão
-## (SPEC 6.3, ausente há mais de 60 s). Só entre mãos.
+## Torneio: o jogador sai e entrega as fichas, divididas em partes iguais entre quem
+## continua (o resto de centavos vai aos primeiros lugares depois do dele). Fica com a
+## pior colocação de agora; no mano a mano, o outro é o campeão. Só entre mãos. Usos:
+## ausente há mais de 60 s no mano a mano, e quem tocou em "Sair" e não voltou em 2
+## minutos (SPEC 6.3).
 func concede(index: int) -> Dictionary:
 	if format != TOURNAMENT:
 		return _error("só no torneio")
 	if hand_in_progress():
 		return _error("espere a mão terminar")
 	var alive: Array[int] = participants()
-	if alive.size() != 2 or not alive.has(index):
-		return _error("só vale no mano a mano")
+	if alive.size() < 2 or not alive.has(index):
+		return _error("esse lugar não está no torneio")
 	var loser: Seat = seat_at(index)
-	var winner: Seat = seat_at(alive[0] if alive[1] == index else alive[1])
+	var others: Array[int] = []
+	for offset in range(1, MAX_SEATS + 1):
+		var other: int = (index + offset) % MAX_SEATS
+		if other != index and alive.has(other):
+			others.append(other)
 	var amount: int = loser.stack
-	winner.stack += amount
+	var share: int = amount / others.size()
+	var rest: int = amount % others.size()
+	var events: Array[Dictionary] = []
+	for i in others.size():
+		var part: int = share + (1 if i < rest else 0)
+		seat_at(others[i]).stack += part
+		events.append({"type": "conceded", "seat": index, "to": others[i], "amount": part})
 	loser.stack = 0
 	loser.state = OUT
-	loser.place = 2
-	winner.place = 1
-	var events: Array[Dictionary] = [
-		{"type": "conceded", "seat": index, "to": winner.index, "amount": amount},
-		{"type": "eliminated", "seat": index, "place": 2},
-		{"type": "tournament_end", "winner": winner.index},
-	]
+	loser.place = alive.size()
+	events.append({"type": "eliminated", "seat": index, "place": loser.place})
+	if others.size() == 1:
+		var winner: Seat = seat_at(others[0])
+		winner.place = 1
+		events.append({"type": "tournament_end", "winner": winner.index})
 	return {"ok": true, "error": "", "events": events}
 
 

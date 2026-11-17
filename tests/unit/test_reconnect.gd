@@ -256,6 +256,41 @@ func test_tournament_drop_keeps_seat_and_returns() -> void:
 	assert_eq(room.members[c].seat, seat, "no mesmo lugar")
 
 
+func test_tournament_leave_has_two_minutes_to_return() -> void:
+	# Saiu e voltou dentro dos 2 minutos: continua no torneio com o que sobrou.
+	var parts: Array = _three({"format": Table.TOURNAMENT, "turn_seconds": 0})
+	var room: Room = parts[0]
+	var c: String = parts[3]
+	var seat: int = room.members[c].seat
+	room.leave(c)
+	_clock.advance(90000)
+	_fold_until(room, func() -> bool: return not room.table.hand_in_progress())
+	room.tick()
+	assert_true(room.members.has(c), "90 s: ainda no torneio, pagando os blinds")
+	assert_eq(_join(room, "Caio", "dev-c")["id"], c, "voltou")
+	assert_eq(room.members[c].seat, seat, "no mesmo lugar")
+	_clock.advance(200000)
+	room.tick()
+	assert_true(room.members.has(c), "quem voltou não sai pelo prazo")
+	# Saiu e não voltou: com 2 minutos, sai do torneio e as fichas vão para quem fica.
+	var other: Array = _three({"format": Table.TOURNAMENT, "turn_seconds": 0})
+	var t_room: Room = other[0]
+	var t_c: String = other[3]
+	t_room.leave(t_c)
+	_clock.advance(119000)
+	_fold_until(t_room, func() -> bool: return not t_room.table.hand_in_progress())
+	t_room.tick()
+	assert_true(t_room.members.has(t_c), "119 s: ainda não")
+	var total: int = t_room.table.chips_on_seats() + t_room.table.chips_in_hand()
+	_clock.advance(1000)
+	_fold_until(t_room, func() -> bool: return not t_room.members.has(t_c))
+	assert_false(t_room.members.has(t_c), "2 minutos: saiu do torneio")
+	assert_false(t_room.is_closed(), "o torneio segue com os outros dois")
+	assert_eq(t_room.table.participants().size(), 2)
+	assert_eq(t_room.table.chips_on_seats() + t_room.table.chips_in_hand(), total, "nenhuma ficha some")
+	assert_true(t_room.table.is_balanced())
+
+
 func test_tournament_heads_up_with_absent_player_ends() -> void:
 	var room: Room = _room({"format": Table.TOURNAMENT, "turn_seconds": 0})
 	var a: String = _join(room, "Ana", "dev-a")["id"]
@@ -278,7 +313,29 @@ func test_engine_concede() -> void:
 	table.add_player(0, "a")
 	table.add_player(1, "b")
 	table.add_player(2, "c")
-	assert_eq(table.concede(1)["ok"], false, "só no mano a mano")
+	table.add_player(4, "d")
+	table.start_hand({"seed": 1})
+	while table.hand_in_progress():
+		table.apply_action(table.hand.to_act, Hand.FOLD)
+	var before: Dictionary = {}
+	for index: int in [0, 2, 4]:
+		before[index] = table.seat_at(index).stack
+	var stack: int = table.seat_at(1).stack
+	var total: int = table.chips_on_seats()
+	var split: Dictionary = table.concede(1)
+	assert_true(split["ok"], "com 4 também vale (quem saiu do torneio)")
+	assert_eq(table.chips_on_seats(), total, "nenhuma ficha some")
+	assert_true(table.is_balanced())
+	var places: Array = split["events"].filter(func(e: Dictionary) -> bool:
+		return e["type"] == "eliminated").map(func(e: Dictionary) -> int: return e["place"])
+	assert_eq(places, [4], "a pior colocação de agora")
+	var got: Array = []
+	for index: int in [2, 4, 0]:   # a ordem a partir do lugar de quem saiu
+		got.append(table.seat_at(index).stack - before[index])
+	assert_eq(got, [stack / 3 + (1 if stack % 3 > 0 else 0), stack / 3 + (1 if stack % 3 > 1 else 0),
+		stack / 3], "partes iguais; o resto vai aos primeiros depois dele")
+	assert_false(table.is_over(), "o torneio continua com 3")
+	assert_eq(table.concede(1)["ok"], false, "quem já saiu não entrega de novo")
 	var classic: Table = Table.new()
 	classic.add_player(0, "a")
 	classic.add_player(1, "b")
@@ -290,10 +347,10 @@ func test_engine_concede() -> void:
 	duel.start_hand({"seed": 1})
 	assert_eq(duel.concede(1)["ok"], false, "não no meio da mão")
 	duel.apply_action(duel.hand.to_act, Hand.FOLD)
-	var total: int = duel.chips_on_seats()
+	var duel_total: int = duel.chips_on_seats()
 	var response: Dictionary = duel.concede(1)
 	assert_eq(response["ok"], true)
-	assert_eq(duel.chips_on_seats(), total, "as fichas só mudam de lugar")
+	assert_eq(duel.chips_on_seats(), duel_total, "as fichas só mudam de lugar")
 	assert_true(duel.is_over(), "o torneio acabou")
 	assert_eq(duel.podium()[0]["id"], "a")
 	assert_true(duel.is_balanced())
@@ -399,11 +456,17 @@ func test_leave_button_shows_left_not_reconnecting() -> void:
 	# Quem só caiu continua "reconectando".
 	room.drop_connection(b)
 	assert_false(_member_info(a, b).get("left", false), "queda não é saída")
+	assert_eq(_member_info(a, b).get("remove_ms"), 60000, "a contagem da queda no clássico")
+	assert_false(_member_info(a, c).has("remove_ms"), "saiu no meio da mão: some quando ela acabar")
 	# Torneio: o lugar fica guardado (SPEC 6.3), mas aparece como quem saiu.
 	var tour: Array = _three({"format": "tournament", "turn_seconds": 0})
 	var t_room: Room = tour[0]
 	t_room.leave(tour[3])
 	assert_true(_member_info(tour[1], tour[3]).get("left", false), "torneio: saiu")
+	assert_eq(_member_info(tour[1], tour[3]).get("remove_ms"), 120000, "2 minutos para voltar")
+	_clock.advance(30000)
+	t_room.announce()
+	assert_eq(_member_info(tour[1], tour[3]).get("remove_ms"), 90000, "a contagem anda")
 	# Voltou: deixa de aparecer como quem saiu.
 	_join(t_room, "Caio", "dev-c")
 	assert_false(_member_info(tour[1], tour[3]).get("left", false), "voltou")

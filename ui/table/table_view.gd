@@ -115,6 +115,7 @@ var _state: Dictionary = {}
 var _seat_count: int = 8
 var _my_seat: int = -1
 var _tags: Dictionary = {}       # lugar -> texto da última ação
+var _countdowns: Dictionary = {} # lugar -> {base, ms, until, text}: quem saiu ou caiu
 var _turn_total_ms: int = 0
 var _turn_left_ms: int = -1
 var _turn_seat: int = -1
@@ -257,11 +258,54 @@ func _process(delta: float) -> void:
 		if _my_turn and not _warned and _turn_total_ms > WARN_MS and _turn_left_ms <= WARN_MS:
 			_warned = true
 			Sfx.vibrate(400)
+	_tick_countdowns()
 	if not frozen_now and _rebuy_left_ms > 0:
 		var before: int = ceili(_rebuy_left_ms / 1000.0)
 		_rebuy_left_ms = maxi(0, _rebuy_left_ms - int(delta * 1000.0))
 		if ceili(_rebuy_left_ms / 1000.0) != before:
 			_refresh_rebuy_text()
+
+
+## Quem saiu ou caiu e ainda ocupa o lugar: "Saiu" ou "Reconectando", com a contagem até
+## o lugar ser liberado quando o servidor manda remove_ms (torneio: 2 min de quem tocou
+## em "Sair"; clássico: 60 s de quem caiu).
+func _countdown_tag(seat_index: int, member: Dictionary) -> String:
+	var base: String = "Saiu" if member.get("left", false) else "Reconectando…"
+	if not member.has("remove_ms"):
+		_countdowns[seat_index] = {"base": base, "ms": -1, "until": -1, "text": base}
+		return base
+	var ms: int = int(member["remove_ms"])
+	var known: Dictionary = _countdowns.get(seat_index, {})
+	# A mesma mensagem desenhada de novo (troca de tamanho da tela) não reinicia a conta.
+	if known.get("base") != base or int(known.get("ms", -2)) != ms:
+		known = {"base": base, "ms": ms, "until": Time.get_ticks_msec() + ms}
+	known["text"] = _countdown_text(known)
+	_countdowns[seat_index] = known
+	return known["text"]
+
+
+static func _countdown_text(entry: Dictionary) -> String:
+	if int(entry["until"]) < 0:
+		return entry["base"]
+	var left: int = ceili(maxi(0, int(entry["until"]) - Time.get_ticks_msec()) / 1000.0)
+	var clock: String = "%d:%02d" % [left / 60, left % 60]
+	return ("Saiu · " if entry["base"] == "Saiu" else "Reconectando ") + clock
+
+
+## A contagem anda a cada segundo, sem esperar a próxima mensagem do servidor.
+func _tick_countdowns() -> void:
+	for seat_index: int in _countdowns:
+		var entry: Dictionary = _countdowns[seat_index]
+		var text: String = _countdown_text(entry)
+		if text == entry["text"]:
+			continue
+		var slot: int = _slot_of(seat_index)
+		if slot < 0 or _seats[slot].data.get("tag") != entry["text"]:
+			continue
+		entry["text"] = text
+		var data: Dictionary = _seats[slot].data.duplicate()
+		data["tag"] = text
+		_seats[slot].data = data
 
 
 ## Desenha uma mensagem `state`.
@@ -319,6 +363,7 @@ func render(state: Dictionary) -> void:
 		Sfx.play(Sfx.TURN, 0.15)
 	_my_turn = my_turn
 
+	var counting: Dictionary = {}
 	for slot in SLOTS:
 		var seat_view: SeatView = _seats[slot]
 		var seat_index: int = _seat_at(slot)
@@ -345,8 +390,9 @@ func render(state: Dictionary) -> void:
 			tag = String(shown[seat_index].get("name", tag))
 		elif member.get("left", false):
 			tag = "Saiu"
-		elif not member.get("connected", true):
-			tag = "Reconectando…"
+		elif member.get("left", false) or not member.get("connected", true):
+			tag = _countdown_tag(seat_index, member)
+			counting[seat_index] = true
 		seat_view.data = {
 			"nick": member.get("nick", ""), "avatar": member.get("avatar", 0),
 			"stack": entry.get("stack", 0), "turn": turn, "fraction": fraction,
@@ -371,6 +417,9 @@ func render(state: Dictionary) -> void:
 				card.highlight = cards.size() == 2 and best.has(int(cards[k]))
 				card.visible = true
 			_place_hole(slot, _slot_point(slot))
+	for seat_index: int in _countdowns.keys():
+		if not counting.has(seat_index):
+			_countdowns.erase(seat_index)
 
 	var board: Array = table.get("board", [])
 	for i in 5:
