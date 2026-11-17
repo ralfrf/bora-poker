@@ -25,6 +25,10 @@ const DEFAULT_SEATS: int = 4
 const TURN_SECONDS: Array[int] = [0, 15, 30, 60]   ## 0 = sem limite
 const DEFAULT_TURN_SECONDS: int = 30
 const MAX_STACK: int = 100_000_000
+## Mesas que o dono da sala pode escolher (as mesmas de ui/theme/tables.gd); todos veem a
+## dele. Nome desconhecido (app mais novo) vira a Salão.
+const FELTS: Array[String] = ["salao", "rubi", "safira", "perola"]
+const DEFAULT_FELT: String = "salao"
 const MAX_NICK: int = 16
 const DEFAULT_NICK: String = "Jogador"
 const AVATARS: int = 10
@@ -181,6 +185,9 @@ static func normalize_options(raw: Variant) -> Dictionary:
 		if not Roster.is_level(level):
 			return _bad_options("nível de bot inválido")
 		bots.append(level)
+	var felt: Variant = raw.get("felt", DEFAULT_FELT)
+	if typeof(felt) != TYPE_STRING or not FELTS.has(felt):
+		felt = DEFAULT_FELT
 	return {"ok": true, "error": "", "options": {
 		"format": probe.format,
 		"seats": seats,
@@ -193,6 +200,7 @@ static func normalize_options(raw: Variant) -> Dictionary:
 		"keep_open": keep_open and probe.format == Table.CLASSIC,
 		"bots": bots,
 		"password": password,
+		"felt": felt,
 	}}
 
 

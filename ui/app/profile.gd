@@ -19,6 +19,7 @@ var nick: String = ""
 var avatar: int = 0
 var last_mode: String = MODE_WIFI   ## SPEC 2: a primeira abertura mostra o Mesmo Wi-Fi
 var offline: Dictionary = {}
+var felt: String = Room.DEFAULT_FELT   ## a última mesa escolhida ao criar (ui/theme/tables.gd)
 var server_url: String = ""     ## endereço do Servidor 1 trocado em "Avançado" ("" = o padrão)
 var device: String = ""
 var sound: bool = true
@@ -44,6 +45,9 @@ func load_file(path: String = PATH) -> void:
 		device = raw_device if typeof(raw_device) == TYPE_STRING else ""
 		var raw_offline: Variant = file.get_value("offline", "escolhas", {})
 		offline = raw_offline if typeof(raw_offline) == TYPE_DICTIONARY else {}
+		var raw_felt: Variant = file.get_value("perfil", "mesa", Room.DEFAULT_FELT)
+		felt = raw_felt if typeof(raw_felt) == TYPE_STRING and Room.FELTS.has(raw_felt) \
+			else Room.DEFAULT_FELT
 		var raw_url: Variant = file.get_value("distancia", "servidor", "")
 		server_url = (raw_url as String).strip_edges().left(200) if typeof(raw_url) == TYPE_STRING else ""
 		sound = _flag(file.get_value("config", "sons", true), true)
@@ -61,6 +65,7 @@ func save() -> bool:
 	file.set_value("perfil", "ultimo_modo", last_mode)
 	file.set_value("perfil", "aparelho", device)
 	file.set_value("offline", "escolhas", offline)
+	file.set_value("perfil", "mesa", felt)
 	file.set_value("distancia", "servidor", server_url)
 	file.set_value("config", "sons", sound)
 	file.set_value("config", "vibracao", vibration)

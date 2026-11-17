@@ -70,6 +70,8 @@ static func build(choice: Dictionary) -> Dictionary:
 		"seats": seats,
 		"turn_seconds": TURN_SECONDS[int(choice["turn"])],
 		"bots": bot_levels(choice),
+		# A mesa vem do perfil (a tela põe em choice); o servidor confere o nome.
+		"felt": str(choice.get("felt", "salao")),
 	}
 	if is_tournament(choice):
 		options["starting_stack"] = TOURNAMENT_STACKS[int(choice["t_stack"])]

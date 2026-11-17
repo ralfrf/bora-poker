@@ -7,6 +7,9 @@ extends "res://ui/screens/screen.gd"
 ## A mesma tela cria a sala do Wi-Fi (wifi verdadeiro): sem bots (o dono põe na sala de
 ## espera) e com "Manter sala aberta" no clássico. À distância (remote), também a senha
 ## opcional de 4 números (SPEC 4.1 e 9.3).
+##
+## Na coluna, a mesa da sala (SPEC 12): começa na última escolhida (fica no perfil) e
+## todos da sala veem a do dono.
 
 signal start(choice: Dictionary)
 signal back
@@ -18,6 +21,7 @@ const Stepper := preload("res://ui/widgets/stepper.gd")
 const Roster := preload("res://bots/roster.gd")
 const Room := preload("res://server/room.gd")
 const EntryPanel := preload("res://ui/widgets/entry_panel.gd")
+const TableChoice := preload("res://ui/widgets/table_choice.gd")
 
 const ROW_H: float = 62.0
 const PLURALS: Dictionary = {1: "fáceis", 2: "médios", 3: "difíceis"}
@@ -36,6 +40,7 @@ var _minutes: ChoiceRow = null
 var _turn: ChoiceRow = null
 var _rebuys: ChoiceRow = null
 var _keep: ChoiceRow = null
+var _felt: TableChoice = null
 var _wifi: bool = false
 var _remote: bool = false
 var _password: ChoiceRow = null
@@ -96,6 +101,12 @@ func _build() -> void:
 	_password.visible = _remote
 	add_child(_password)
 
+	choice["felt"] = profile.felt
+	_felt = TableChoice.new()
+	_felt.felt = profile.felt
+	_felt.felt_changed.connect(func(id: String) -> void: choice["felt"] = id)
+	add_child(_felt)
+
 	_summary_big = Label.new()
 	_summary_big.theme_type_variation = "TitleLabel"
 	_summary_big.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -151,6 +162,8 @@ func _layout() -> void:
 	place(_start, Rect2(col.position.x, col.end.y - BUTTON_H, col.size.x, BUTTON_H))
 	place(_summary_big, Rect2(col.position.x, col.position.y + 44.0, col.size.x, 32))
 	place(_summary, Rect2(col.position.x, col.position.y + 80.0, col.size.x, 60))
+	var felt_h: float = TableChoice.THUMB_H + 52.0
+	place(_felt, Rect2(col.position.x, col.end.y - BUTTON_H - 8.0 - felt_h, col.size.x, felt_h))
 
 
 func _choose(value: int, key: String) -> void:
@@ -217,6 +230,8 @@ func _on_password_typed(text: String) -> void:
 
 
 func _on_start() -> void:
+	profile.felt = str(choice["felt"])
+	profile.save()
 	if _remote:
 		var sent: Dictionary = choice.duplicate()
 		sent["password"] = _password_text

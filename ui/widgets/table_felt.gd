@@ -24,6 +24,8 @@ var skin: Dictionary = {}:
 	set(value):
 		skin = value
 		queue_redraw()
+## Falso: só a mesa, sem o fundo de salão (miniatura e fundo da sala de espera).
+var show_room: bool = true
 
 static var _weave: Texture2D = null
 static var _wood: Texture2D = null
@@ -42,8 +44,9 @@ func _notification(what: int) -> void:
 func _draw() -> void:
 	var lights: Array[Color] = [get_theme_color("bokeh_0", T), get_theme_color("bokeh_1", T),
 		get_theme_color("bokeh_2", T)]
-	Paint.room(self, Rect2(Vector2.ZERO, size), get_theme_color("bg_top", T),
-		get_theme_color("bg", T), lights)
+	if show_room:
+		Paint.room(self, Rect2(Vector2.ZERO, size), get_theme_color("bg_top", T),
+			get_theme_color("bg", T), lights)
 	var shape: int = get_theme_constant("table_shape", T)
 	var shadow: Color = get_theme_color("shadow", T)
 

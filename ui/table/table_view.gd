@@ -32,6 +32,7 @@ const CardView := preload("res://ui/widgets/card_view.gd")
 const SeatView := preload("res://ui/widgets/seat_view.gd")
 const AmountView := preload("res://ui/widgets/amount_view.gd")
 const TableFelt := preload("res://ui/widgets/table_felt.gd")
+const Tables := preload("res://ui/theme/tables.gd")
 const ActionBar := preload("res://ui/widgets/action_bar.gd")
 const T: String = "Tokens"
 
@@ -108,7 +109,8 @@ var _watching: bool = false
 var reactions_enabled: bool = false
 ## A mesa espera o anfitrião voltar: os relógios ficam parados (SPEC 6.4).
 var frozen: bool = false
-## A mesa escolhida (ui/theme/tables.gd); vazio é a Salão.
+## A mesa escolhida (ui/theme/tables.gd); vazio é a Salão. render() troca pela mesa da
+## sala (options.felt), que o dono escolheu.
 var table_skin: Dictionary = {}:
 	set(value):
 		table_skin = value
@@ -324,6 +326,9 @@ func render(state: Dictionary) -> void:
 	var you: Dictionary = state.get("you", {})
 	var events: Array = state.get("events", [])
 	_seat_count = int(room.get("options", {}).get("seats", 9))
+	var felt: String = str(room.get("options", {}).get("felt", ""))
+	if felt != "" and table_skin != Tables.skin(felt):
+		table_skin = Tables.skin(felt)
 	_my_seat = int(you.get("seat", -1))
 	_note_events(events, table)
 	_layout()

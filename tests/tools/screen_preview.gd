@@ -7,6 +7,7 @@ extends Control
 ##            servers | servers_wake | servers_full | servers_advanced | remote_rooms |
 ##            remote_password | remote_wake | remote_empty | remote_setup | remote_waiting
 ##   --seed=N  (game e showdown: muda a mesa sorteada)
+##   --felt=rubi  (a mesa escolhida: telas de criar, sala de espera e partida offline)
 
 const Profile := preload("res://ui/app/profile.gd")
 const OfflineGame := preload("res://ui/app/offline_game.gd")
@@ -32,6 +33,7 @@ const FAST: Dictionary = {"hand_gap_ms": 0, "showdown_gap_ms": 0, "bot_min_ms": 
 	"bot_max_ms": 0, "bot_evaluations": 120}
 
 var _seed: int = 1
+var _felt: String = "salao"
 
 
 func _ready() -> void:
@@ -44,8 +46,11 @@ func _ready() -> void:
 			_seed = int(arg.get_slice("=", 1))
 		elif arg.begins_with("--seats="):
 			seats = int(arg.get_slice("=", 1))
+		elif arg.begins_with("--felt="):
+			_felt = arg.get_slice("=", 1)
 	var profile: Profile = Profile.new()
 	profile.load_file("user://perfil_foto.cfg")
+	profile.felt = _felt
 	profile.nick = "Rafa"
 	profile.avatar = 4
 	profile.offline = {"seats": seats}
@@ -173,7 +178,9 @@ func _remote_waiting(seats: int) -> RemoteGame:
 	var address: String = "ws://127.0.0.1:%d" % remote_host.ws.port
 	var owner_game: RemoteGame = RemoteGame.new()
 	owner_game.open(address, "Rafa", 4, "aparelho-foto")
-	owner_game.create(OfflineOptions.build_room(OfflineOptions.clean({"seats": seats})), "2580")
+	var choice: Dictionary = OfflineOptions.clean({"seats": seats})
+	choice["felt"] = _felt
+	owner_game.create(OfflineOptions.build_room(choice), "2580")
 	var guest: RemoteGame = RemoteGame.new()
 	guest.open(address, "Bia", 2, "aparelho-bia")
 	for _i in 400:
@@ -231,6 +238,7 @@ func _game(kind: String, seats: int, watching: bool = false, ranking: bool = fal
 		return _seed)
 	var choice: Dictionary = OfflineOptions.clean({"seats": seats, "stack": 0,
 		"blinds": 3})
+	choice["felt"] = _felt
 	game.begin("Rafa", 1, "aparelho-foto", OfflineOptions.build(choice))
 	var target: Dictionary = {}
 	for i in 6000:

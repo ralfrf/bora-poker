@@ -2,7 +2,7 @@ extends "res://ui/screens/screen.gd"
 ## Sala de espera do Wi-Fi e à distância (SPEC 11.1, item 5): quem já entrou, os bots, as opções e o
 ## código da sala. O dono põe e tira bots, expulsa e começa a partida; os outros
 ## esperam. Cada um troca o próprio avatar tocando no seu lugar. Quando a partida
-## começa, a mesa abre (sinal started).
+## começa, a mesa abre (sinal started). Ao fundo, apagada, a mesa que o dono escolheu.
 
 signal started
 ## Saiu da sala, foi expulso, a sala fechou ou a conexão falhou. notice: o porquê.
@@ -19,6 +19,10 @@ const Money := preload("res://engine/money.gd")
 const Protocol := preload("res://server/protocol.gd")
 const AvatarPicker := preload("res://ui/widgets/avatar_picker.gd")
 const Ads := preload("res://ui/app/ads.gd")
+const TableFelt := preload("res://ui/widgets/table_felt.gd")
+const Tables := preload("res://ui/theme/tables.gd")
+## Quanto aparece a mesa ao fundo.
+const FELT_ALPHA: float = 0.3
 
 const CHIP_H: float = 46.0
 const TURN_TEXT: Dictionary = {0: "sem limite de tempo", 15: "15 s por jogada",
@@ -66,6 +70,7 @@ class SeatChip:
 
 
 var _game: GameSession = null
+var _felt: TableFelt = null
 var _back: Button = null
 var _title: Label = null
 var _summary: Label = null
@@ -95,6 +100,11 @@ func _init(game: GameSession) -> void:
 
 
 func _build() -> void:
+	_felt = TableFelt.new()
+	_felt.show_room = false
+	_felt.modulate = Color(1, 1, 1, FELT_ALPHA)
+	_felt.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(_felt)
 	_back = Button.new()
 	_back.text = "‹"
 	_back.theme_type_variation = "QuietButton"
@@ -243,6 +253,9 @@ func _refresh() -> void:
 	var owner: bool = _game.is_owner()
 	var options: Dictionary = room.get("options", {})
 	var seats: int = int(options.get("seats", 0))
+	var skin: Dictionary = Tables.skin(str(options.get("felt", Tables.SALAO)))
+	if _felt.skin != skin:
+		_felt.skin = skin
 	_title.text = str(room.get("name", "Entrando na sala…"))
 	_summary.text = _options_text(options) if not options.is_empty() else ""
 	_code.text = _game.room_code()
@@ -348,6 +361,9 @@ func _layout() -> void:
 		return
 	var b: Rect2 = body()
 	var col: Rect2 = column()
+	# A mesa ao fundo ocupa a tela toda, com folga para a borda e a sombra.
+	var inset: float = TableFelt.RAIL + 18.0
+	_felt.felt_rect = Rect2(Vector2.ONE * inset, size - Vector2.ONE * inset * 2.0)
 	place(_back, Rect2(b.position.x, b.position.y - 2.0, 44, 40))
 	var code_w: float = 120.0 if _code.text != "" else 0.0
 	place(_title, Rect2(b.position.x + 56.0, b.position.y, b.size.x - 56.0 - code_w, 36))

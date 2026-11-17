@@ -8,6 +8,7 @@ const Profile := preload("res://ui/app/profile.gd")
 const Clock := preload("res://server/clock.gd")
 const Room := preload("res://server/room.gd")
 const Protocol := preload("res://server/protocol.gd")
+const Tables := preload("res://ui/theme/tables.gd")
 
 const FAST: Dictionary = {"hand_gap_ms": 0, "showdown_gap_ms": 0, "bot_min_ms": 0,
 	"bot_max_ms": 0, "bot_evaluations": 120}
@@ -119,6 +120,32 @@ func test_offline_options_clean_restores_defaults() -> void:
 	assert_eq(OfflineOptions.blind_labels()[0], "0,05/0,10")
 
 
+## Mesa da sala (SPEC 12): o dono escolhe, o servidor confere e todos recebem nas opções.
+func test_felt_choice() -> void:
+	assert_eq(Tables.ALL.keys(), Array(Room.FELTS), "as mesmas mesas no servidor e na tela")
+	assert_eq(Room.normalize_options({})["options"]["felt"], Room.DEFAULT_FELT, "padrão")
+	assert_eq(Room.normalize_options({"felt": "rubi"})["options"]["felt"], "rubi")
+	assert_eq(Room.normalize_options({"felt": "dourada"})["options"]["felt"], "salao",
+		"mesa desconhecida vira a Salão, sem recusar a sala")
+	assert_eq(Room.normalize_options({"felt": 3})["options"]["felt"], "salao")
+	var choice: Dictionary = OfflineOptions.clean({"seats": 3})
+	assert_eq(OfflineOptions.build(choice)["felt"], "salao", "sem escolha, a Salão")
+	choice["felt"] = "perola"
+	assert_eq(OfflineOptions.build_room(choice)["felt"], "perola")
+	var clock: Clock = Clock.new(true)
+	var game: OfflineGame = _game(clock)
+	game.begin("Rafa", 1, "aparelho-teste-0002", OfflineOptions.build(choice))
+	var felt: String = ""
+	for i in 20:
+		clock.advance(250)
+		for message: Dictionary in game.update():
+			if message["t"] == Protocol.STATE:
+				felt = str(message.get("room", {}).get("options", {}).get("felt", ""))
+		if felt != "":
+			break
+	assert_eq(felt, "perola", "a mesa chega a quem joga")
+
+
 func test_profile_round_trip() -> void:
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PROFILE))
 	var profile: Profile = Profile.new()
@@ -129,6 +156,8 @@ func test_profile_round_trip() -> void:
 	profile.avatar = 2
 	profile.last_mode = Profile.MODE_OFFLINE
 	profile.offline = {"seats": 6}
+	assert_eq(profile.felt, "salao", "mesa padrão")
+	profile.felt = "safira"
 	assert_true(profile.save(), "salvou")
 	var again: Profile = Profile.new()
 	again.load_file(TEST_PROFILE)
@@ -137,6 +166,7 @@ func test_profile_round_trip() -> void:
 	assert_eq(again.avatar, 2)
 	assert_eq(again.device, profile.device, "o mesmo aparelho")
 	assert_eq(again.offline, {"seats": 6})
+	assert_eq(again.felt, "safira", "a última mesa escolhida volta")
 	again.set_nick("   ")
 	assert_true(again.is_new(), "apelido em branco não vale")
 	var file: FileAccess = FileAccess.open(TEST_PROFILE, FileAccess.WRITE)
