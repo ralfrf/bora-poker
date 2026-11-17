@@ -249,3 +249,35 @@ func test_host_lost_score_splits_host_bets() -> void:
 		assert_eq(after[c], before[c], "quem desistiu recebe a aposta de volta")
 	assert_eq(sum, 0, "nenhuma ficha some nem aparece")
 	assert_eq(HostLost.final_from({}, a), {}, "sem state, sem placar")
+
+
+func _info(room: Room, viewer: String, target: String) -> Dictionary:
+	for member: Dictionary in _last(viewer).get("room", {}).get("members", []):
+		if member["id"] == target:
+			return member
+	return {}
+
+
+func test_ad_in_lobby_blocks_start_until_it_ends() -> void:
+	var room: Room = _room({"format": "classic", "seats": 4, "turn_seconds": 0})
+	var ana: String = _join(room, "Ana")
+	var bia: String = _join(room, "Bia")
+	room.handle(bia, {"t": Protocol.AD, "on": true})
+	assert_true(_info(room, ana, bia).get("ad", false), "os outros veem \"Em anúncio\"")
+	room.handle(ana, {"t": Protocol.START})
+	assert_eq(room.phase, Protocol.LOBBY, "não começa com alguém no anúncio")
+	assert_true(str(_last(ana, Protocol.ERROR).get("text", "")).contains("Bia"), "diz quem")
+	room.handle(bia, {"t": Protocol.AD, "on": false})
+	assert_false(_info(room, ana, bia).has("ad"), "acabou o anúncio")
+	# Preso no anúncio (o app não avisou o fim): some sozinho depois do prazo.
+	room.handle(bia, {"t": Protocol.AD, "on": true})
+	_clock.advance(60000)
+	room.tick()
+	assert_false(_info(room, ana, bia).has("ad"), "prazo vencido: sem \"Em anúncio\"")
+	room.handle(ana, {"t": Protocol.START})
+	assert_eq(room.phase, Protocol.PLAYING, "começa depois")
+	# Com a partida andando o aviso é ignorado.
+	room.handle(bia, {"t": Protocol.AD, "on": true})
+	assert_false(_info(room, ana, bia).has("ad"), "fora da sala de espera não vale")
+	room.handle(bia, {"t": Protocol.AD, "on": "sim"})
+	assert_eq(_last(bia, Protocol.ERROR).get("text"), "pedido malformado", "pedido malformado")

@@ -9,10 +9,25 @@ static func rewarded(done: Callable) -> void:
 	done.call_deferred(true)
 
 
-## Anúncio de tela cheia entre partidas: depois do placar, antes do início ou da
-## partida seguinte. Nunca durante uma mão. Hoje não mostra nada e segue na hora.
+## Intervalo mínimo entre dois anúncios de tela cheia, para o "Jogar de novo" (que já
+## mostra um) não emendar com o da sala de espera.
+const INTERSTITIAL_GAP_MS: int = 120000
+
+static var _last_interstitial: int = -INTERSTITIAL_GAP_MS
+
+
+## Anúncio de tela cheia: depois do placar e logo ao entrar numa sala de espera (pedido
+## do dono, 17/11/2026). Nunca durante uma mão nem ao abrir o app. Hoje não mostra nada
+## e segue na hora.
 static func interstitial(done: Callable) -> void:
+	if interstitial_ready():
+		_last_interstitial = Time.get_ticks_msec()
 	done.call_deferred()
+
+
+## Um anúncio de tela cheia apareceria agora? (Há serviço e passou o intervalo mínimo.)
+static func interstitial_ready() -> bool:
+	return available() and Time.get_ticks_msec() - _last_interstitial >= INTERSTITIAL_GAP_MS
 
 
 ## Há anúncio de verdade para mostrar? Hoje não (sem SDK); as telas só oferecem o

@@ -18,6 +18,7 @@ const Roster := preload("res://bots/roster.gd")
 const Money := preload("res://engine/money.gd")
 const Protocol := preload("res://server/protocol.gd")
 const AvatarPicker := preload("res://ui/widgets/avatar_picker.gd")
+const Ads := preload("res://ui/app/ads.gd")
 
 const CHIP_H: float = 46.0
 const TURN_TEXT: Dictionary = {0: "sem limite de tempo", 15: "15 s por jogada",
@@ -84,6 +85,7 @@ var _picker: AvatarPicker = null
 var _seat_ids: Array[String] = []
 var _pending_kick: String = ""
 var _done: bool = false
+var _ad_checked: bool = false   ## o anúncio da entrada já foi decidido
 var _last_status: String = ""
 
 
@@ -183,6 +185,7 @@ func _process(delta: float) -> void:
 					_done = true
 					started.emit()
 					return
+				_maybe_show_ad()
 			Protocol.CLOSED:
 				_finish(_game.closed_notice())
 				return
@@ -209,6 +212,21 @@ func _process(delta: float) -> void:
 		changed = true
 	if changed:
 		_refresh()
+
+
+## Logo ao entrar na sala de espera aparece um anúncio de tela cheia; enquanto ele dura
+## os outros veem "Em anúncio" e a partida não começa. Uma vez por entrada: quem
+## reconecta dentro da sala não vê outro.
+func _maybe_show_ad() -> void:
+	if _ad_checked:
+		return
+	_ad_checked = true
+	if not Ads.interstitial_ready():
+		return
+	_game.set_in_ad(true)
+	Ads.interstitial(func() -> void:
+		if not _done:
+			_game.set_in_ad(false))
 
 
 func _finish(notice: String) -> void:
@@ -261,12 +279,18 @@ func _refresh() -> void:
 	for button: Button in _bot_buttons:
 		button.visible = owner
 		button.disabled = not can_add
+	var in_ad: String = ""
+	for member: Dictionary in room.get("members", []):
+		if member.get("ad", false) and member.get("id") != _game.my_id:
+			in_ad = str(member.get("nick", ""))
 	_start.visible = owner
-	_start.disabled = players < 2
+	_start.disabled = players < 2 or in_ad != ""
 	if _game.status_text() != "":
 		_status.text = _game.status_text()
 	elif state.is_empty():
 		_status.text = "Conectando…"
+	elif owner and in_ad != "":
+		_status.text = "Espere: %s está vendo um anúncio. A partida começa quando acabar." % in_ad
 	elif owner:
 		_status.text = ("Precisa de pelo menos 2 na mesa (bots contam). " if players < 2
 			else "Toque num bot ou jogador para tirar da sala. ") \
@@ -292,7 +316,12 @@ func _member_text(member: Dictionary, room: Dictionary) -> String:
 		parts.append("saiu")
 	elif not member.get("connected", true):
 		parts.append("reconectando…")
-	return " · ".join(parts) if not parts.is_empty() else "Na mesa"
+	elif member.get("ad", false):
+		parts.append("em anúncio")
+	if parts.is_empty():
+		return "Na mesa"
+	var text: String = " · ".join(parts)
+	return text.left(1).to_upper() + text.substr(1)
 
 
 static func _options_text(options: Dictionary) -> String:

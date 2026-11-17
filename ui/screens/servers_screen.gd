@@ -17,6 +17,7 @@ const LoadProbe := preload("res://net/load_probe.gd")
 const RemoteGame := preload("res://ui/app/remote_game.gd")
 const RoomRow := preload("res://ui/widgets/room_row.gd")
 const EntryPanel := preload("res://ui/widgets/entry_panel.gd")
+const AdBox := preload("res://ui/widgets/ad_box.gd")
 
 const ROW_H: float = 62.0
 const NAMES: Array[String] = ["Servidor 1", "Servidor 2"]
@@ -30,6 +31,7 @@ var _title: Label = null
 var _status: Label = null
 var _rows: Array[RoomRow] = []
 var _hint: Label = null
+var _ad: AdBox = null
 var _advanced: Button = null
 var _enter: Button = null
 var _panel: EntryPanel = null
@@ -69,6 +71,8 @@ func _build() -> void:
 	_hint.theme_type_variation = "SmallLabel"
 	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	add_child(_hint)
+	_ad = AdBox.new()
+	add_child(_ad)
 	_advanced = action_button("Avançado", false)
 	_advanced.pressed.connect(_open_advanced)
 	add_child(_advanced)
@@ -163,7 +167,12 @@ func _layout() -> void:
 	for i in _rows.size():
 		place(_rows[i], Rect2(b.position.x, top + i * (ROW_H + 8.0), b.size.x, ROW_H))
 	var hint_top: float = top + _rows.size() * (ROW_H + 8.0)
-	place(_hint, Rect2(b.position.x, hint_top, b.size.x, maxf(20.0, b.end.y - hint_top)))
+	# Quadro de anúncio no canto de baixo, embaixo da lista; o aviso fica ao lado dele.
+	var ad_size: Vector2 = AdBox.SIZE
+	place(_ad, Rect2(b.position.x, b.end.y - ad_size.y, ad_size.x, ad_size.y))
+	var hint_left: float = b.position.x + ad_size.x + 14.0
+	place(_hint, Rect2(hint_left, hint_top, maxf(40.0, b.end.x - hint_left),
+		maxf(20.0, b.end.y - hint_top)))
 	place(_enter, Rect2(col.position.x, col.end.y - BUTTON_H, col.size.x, BUTTON_H))
 	place(_advanced, Rect2(col.position.x, col.end.y - BUTTON_H * 2.0 - 10.0, col.size.x, BUTTON_H))
 

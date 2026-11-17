@@ -103,6 +103,11 @@ func set_avatar(avatar: int) -> void:
 	send({"t": Protocol.PROFILE, "avatar": avatar})
 
 
+## Avisa a sala que está vendo um anúncio (os outros veem "Em anúncio") ou que acabou.
+func set_in_ad(on: bool) -> void:
+	send({"t": Protocol.AD, "on": on})
+
+
 ## Verdadeiro enquanto a saída ainda não terminou (Wi-Fi: o anfitrião saiu e a sala
 ## passa para outro celular quando a mão acabar).
 func pending_exit() -> bool:

@@ -53,6 +53,7 @@ const DEFAULT_CONFIG: Dictionary = {
 	"bot_style": "",            # força um estilo para todos os bots (simulações)
 	"watcher_cap": 0,           # teto de espectadores que contam (SPEC 4.3); 0 = sem teto
 	"empty_close_ms": 0,        # partida sem humanos espera isso antes de fechar (SPEC 6.5)
+	"ad_max_ms": 60000,         # "Em anúncio" some sozinho depois disso, se o app não avisar o fim
 }
 
 
@@ -86,6 +87,7 @@ class Member:
 	var watcher: bool = false      ## assiste por escolha ou voltou sem lugar: conta no teto (SPEC 4.3)
 	var quit: bool = false         ## tocou em "Sair" (não caiu): os outros veem "Saiu", não "Reconectando…"
 	var away_since: int = -1       ## relógio real desde quando está ausente; -1 = presente
+	var ad_since: int = -1         ## relógio real desde quando vê um anúncio na sala de espera; -1 = não vê
 
 
 var id: String = ""
@@ -405,6 +407,8 @@ func handle(member_id: String, message: Dictionary) -> void:
 			problem = _sit(member, message)
 		Protocol.AWAY:
 			problem = _set_away(member, message)
+		Protocol.AD:
+			problem = _set_ad(member, message)
 		Protocol.RETURN_CHOICE:
 			problem = _return_choice(member, message)
 		Protocol.PROFILE:
@@ -436,6 +440,7 @@ func tick() -> void:
 	_expire_away()
 	if phase == Protocol.ENDED:
 		return
+	_expire_ads()
 	_expire_held()
 	_run()
 
@@ -446,6 +451,9 @@ func start() -> String:
 		return "a partida já começou"
 	if table.participants().size() < 2:
 		return "faltam jogadores para começar"
+	for member: Member in members.values():
+		if _in_ad(member):
+			return "espere: %s está vendo um anúncio" % member.nick
 	phase = Protocol.PLAYING
 	_play_started = _now()
 	_next_hand_at = _play_started
@@ -845,6 +853,39 @@ func _set_away(member: Member, message: Dictionary) -> String:
 	_mark_away(member, on)
 	_broadcast([])
 	return ""
+
+
+## Anúncio de quem acabou de entrar na sala de espera: os outros veem "Em anúncio" e a
+## partida não começa até ele acabar (pedido do dono, 17/11/2026). Fora da sala de espera
+## o aviso não vale e é ignorado.
+func _set_ad(member: Member, message: Dictionary) -> String:
+	var on: Variant = message.get("on")
+	if typeof(on) != TYPE_BOOL:
+		return "pedido malformado"
+	var now_on: bool = on and phase == Protocol.LOBBY
+	if now_on == (member.ad_since >= 0):
+		return ""
+	member.ad_since = _clock.now_ms() if now_on else -1
+	_broadcast([])
+	return ""
+
+
+## Vê um anúncio agora: conectado, na sala de espera e dentro do prazo.
+func _in_ad(member: Member) -> bool:
+	return (member.ad_since >= 0 and phase == Protocol.LOBBY and member.connected
+		and member.offline_since < 0
+		and _clock.now_ms() - member.ad_since < int(_config["ad_max_ms"]))
+
+
+## Tira o "Em anúncio" de quem passou do prazo, caiu ou saiu sem avisar o fim.
+func _expire_ads() -> void:
+	var changed: bool = false
+	for member: Member in members.values():
+		if member.ad_since >= 0 and not _in_ad(member):
+			member.ad_since = -1
+			changed = true
+	if changed and phase != Protocol.ENDED:
+		_broadcast([])
 
 
 func _owner_command(member: Member, message: Dictionary) -> String:
@@ -1531,6 +1572,8 @@ func _room_info() -> Dictionary:
 			"connected": member.connected and member.offline_since < 0,
 			"rebuys": table.rebuys_of(member.id),
 		})
+		if _in_ad(member):
+			list.back()["ad"] = true
 		if member.quit:
 			# Saiu pelo botão e o lugar ainda espera a mão acabar (ou o torneio guarda).
 			list.back()["left"] = true

@@ -16,6 +16,7 @@ const ACT: String = "act"                   ## {seq, action, amount}
 const REBUY: String = "rebuy"               ## {accept}
 const SIT: String = "sit"                   ## {seat} (seat é opcional)
 const AWAY: String = "away"                 ## {on}: verdadeiro = ausente, falso = "Voltei"
+const AD: String = "ad"                     ## {on}: vendo um anúncio na sala de espera (trava o "Começar")
 const HISTORY: String = "history"           ## {}: pede o histórico das mãos
 const OWNER: String = "owner"               ## {cmd, ...} (só o dono)
 const PING: String = "ping"                 ## {}: batimento, a cada 2 s na rede
