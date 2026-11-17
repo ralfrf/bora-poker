@@ -37,6 +37,10 @@ COPY --chown=jogo:jogo bots ./bots
 # A tela também entra: os testes do Wi-Fi e das telas carregam ui/.
 COPY --chown=jogo:jogo ui ./ui
 COPY --chown=jogo:jogo tests ./tests
+# Prova da hospedagem: eco WebSocket e página de teste na porta PORT, com os testes
+# rodando ao lado. No Render, o comando do serviço é:
+#   godot --headless --path /app -s res://deploy/prova.gd
+COPY --chown=jogo:jogo deploy/prova.gd ./deploy/prova.gd
 RUN chown jogo:jogo /app
 USER jogo
 

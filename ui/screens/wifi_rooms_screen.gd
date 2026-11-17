@@ -164,7 +164,7 @@ func _build() -> void:
 	add_child(_back)
 	_title = Label.new()
 	_title.theme_type_variation = "TitleLabel"
-	_title.text = "Mesmo Wi-Fi"
+	_title.text = "Mesma rede"
 	add_child(_title)
 	_status = Label.new()
 	_status.theme_type_variation = "StrongLabel"

@@ -97,9 +97,12 @@ func _draw() -> void:
 			HORIZONTAL_ALIGNMENT_CENTER, w, small, text_color)
 
 
-## Texto centrado que quebra em até duas linhas.
+## Texto centrado que quebra em quantas linhas couberem até a borda de baixo (no
+## mínimo duas).
 func _lines(font: Font, text: String, origin: Vector2, width: float, font_size: int,
 		color: Color) -> void:
+	var step: float = font_size + 4.0
+	var room: int = maxi(2, int((size.y - 6.0 - origin.y) / step) + 1)
 	var rows: Array[String] = [""]
 	for word: String in text.split(" "):
 		var attempt: String = (rows[-1] + " " + word).strip_edges()
@@ -108,8 +111,8 @@ func _lines(font: Font, text: String, origin: Vector2, width: float, font_size: 
 			rows.append(word)
 		else:
 			rows[-1] = attempt
-	for i in mini(rows.size(), 2):
-		draw_string(font, origin + Vector2(0, i * (font_size + 4.0)), rows[i],
+	for i in mini(rows.size(), room):
+		draw_string(font, origin + Vector2(0, i * step), rows[i],
 			HORIZONTAL_ALIGNMENT_CENTER, width, font_size, color)
 
 
