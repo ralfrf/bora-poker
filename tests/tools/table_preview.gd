@@ -1,8 +1,10 @@
 extends Control
 ## Prévia provisória das direções visuais no celular: a mesa de exemplo em tamanho
 ## real. Um toque fora dos botões alterna entre os temas de directions.gd (hoje só um).
+## --table=rubi mostra uma mesa da Loja (ui/theme/tables.gd).
 
 const Directions := preload("res://ui/theme/directions.gd")
+const Tables := preload("res://ui/theme/tables.gd")
 const UiTheme := preload("res://ui/theme/ui_theme.gd")
 const DemoState := preload("res://tests/tools/demo_state.gd")
 const TableView := preload("res://ui/table/table_view.gd")
@@ -31,6 +33,8 @@ func _ready() -> void:
 			_index = int(arg.get_slice("=", 1))
 		elif arg == "--sheet":
 			sheet = true
+		elif arg.begins_with("--table="):
+			_table.table_skin = Tables.skin(arg.get_slice("=", 1))
 		elif arg == "--flop":
 			_board = 3
 	_apply()

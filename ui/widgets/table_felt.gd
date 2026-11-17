@@ -3,6 +3,9 @@ extends Control
 ## dourado, feltro com luz no centro, textura de tecido e a sombra da borda caindo no
 ## feltro. A forma vem do table_shape do tema. felt_rect é o retângulo do feltro, sem a
 ## borda. Nada escrito no feltro.
+##
+## skin é a mesa escolhida (ui/theme/tables.gd): troca as cores da mesa, a borda (couro
+## ou madeira) e a estampa do feltro; o que ela não diz vem do tema.
 
 const Paint := preload("res://ui/widgets/paint.gd")
 const T: String = "Tokens"
@@ -17,7 +20,13 @@ var felt_rect: Rect2 = Rect2(30, 70, 300, 440):
 		felt_rect = value
 		queue_redraw()
 
+var skin: Dictionary = {}:
+	set(value):
+		skin = value
+		queue_redraw()
+
 static var _weave: Texture2D = null
+static var _wood: Texture2D = null
 
 
 func _init() -> void:
@@ -47,15 +56,34 @@ func _draw() -> void:
 			points[k] += offset
 		draw_colored_polygon(points, Color(shadow, 0.075))
 
-	_draw_rail(shape)
+	if _style("rail_kind") == 1:
+		_draw_wood(shape)
+	else:
+		_draw_rail(shape)
+	_draw_trim(shape)
 	_draw_felt(shape)
+
+
+## Cor da mesa: a da skin, se ela disser, senão a do tema.
+func _color(key: String) -> Color:
+	var colors: Dictionary = skin.get("colors", {})
+	if colors.has(key):
+		return Color.html(colors[key])
+	return get_theme_color(key, T)
+
+
+func _style(key: String) -> int:
+	var style: Dictionary = skin.get("style", {})
+	if style.has(key):
+		return int(style[key])
+	return get_theme_constant(key, T) if has_theme_constant(key, T) else 0
 
 
 ## Borda acolchoada: faixas do lado de fora para dentro, com uma crista clara no meio
 ## (o couro estufado pegando luz) e mais luz na metade de cima.
 func _draw_rail(shape: int) -> void:
-	var rail: Color = get_theme_color("rail", T)
-	var high: Color = get_theme_color("rail_hi", T)
+	var rail: Color = _color("rail")
+	var high: Color = _color("rail_hi")
 	# Perfil da borda: posição (0 fora, 1 dentro) e quanto da luz pega.
 	var profile: Array = [[0.0, 0.0], [0.12, 0.35], [0.32, 0.9], [0.5, 0.55], [0.75, 0.2],
 		[1.0, 0.05]]
@@ -86,8 +114,71 @@ func _draw_rail(shape: int) -> void:
 	ridge_colors.append(ridge_colors[0])
 	draw_polyline_colors(ridge, ridge_colors, 1.2, true)
 
-	# Fio dourado entre a borda e o feltro, mais claro em cima.
-	var trim: Color = get_theme_color("rail_line", T)
+
+## Borda de madeira envernizada: muitas faixas finas com o veio da madeira correndo ao
+## longo da borda (textura), luz de um perfil arredondado e dois reflexos do verniz.
+func _draw_wood(shape: int) -> void:
+	var rail: Color = _color("rail")
+	var high: Color = _color("rail_hi")
+	# Perfil arredondado: posição (0 fora, 1 dentro) e quanto da luz pega.
+	var profile: Array = [[0.0, 0.0], [0.1, 0.3], [0.25, 0.75], [0.4, 0.95], [0.55, 0.8],
+		[0.7, 0.5], [0.85, 0.25], [1.0, 0.1]]
+	var count: int = 16
+	var top_y: float = felt_rect.position.y - RAIL
+	var span: float = felt_rect.size.y + RAIL * 2.0
+	# O veio segue o comprimento do meio da borda, igual em todas as faixas.
+	var middle: PackedVector2Array = contour(felt_rect, shape, RAIL * 0.5)
+	var along: PackedFloat32Array = PackedFloat32Array([0.0])
+	for i in middle.size():
+		along.append(along[i] + middle[i].distance_to(middle[(i + 1) % middle.size()]))
+	var total: float = along[along.size() - 1]
+	var tile: float = total / maxf(roundf(total / 220.0), 1.0)
+	var rings: Array[PackedVector2Array] = []
+	var colors: Array[PackedColorArray] = []
+	var uvs: Array[PackedVector2Array] = []
+	for r in count + 1:
+		var t: float = float(r) / count
+		var light: float = _profile_at(profile, t)
+		var points: PackedVector2Array = contour(felt_rect, shape, RAIL * (1.0 - t))
+		points.append(points[0])
+		var row: PackedColorArray = PackedColorArray()
+		var uv: PackedVector2Array = PackedVector2Array()
+		for i in points.size():
+			var p: Vector2 = points[i]
+			var above: float = 1.0 - clampf((p.y - top_y) / span, 0.0, 1.0)
+			var color: Color = rail.lerp(high, clampf(light * (0.4 + 0.8 * above), 0.0, 1.0))
+			if r == 0:
+				color = rail.darkened(0.55)
+			row.append(color)
+			uv.append(Vector2(along[i] / tile, t))
+		rings.append(points)
+		colors.append(row)
+		uvs.append(uv)
+	_strips_open(rings, colors, uvs, _wood_texture())
+	# Reflexos do verniz: um fino e forte no alto do arredondado, outro largo e fraco.
+	for gloss: Array in [[0.36, 1.4, 0.45], [0.62, 3.0, 0.1]]:
+		var line: PackedVector2Array = contour(felt_rect, shape, RAIL * (1.0 - float(gloss[0])))
+		var tints: PackedColorArray = PackedColorArray()
+		for p: Vector2 in line:
+			var above: float = 1.0 - clampf((p.y - top_y) / span, 0.0, 1.0)
+			tints.append(Color(1, 0.93, 0.82, float(gloss[2]) * above * above))
+		line.append(line[0])
+		tints.append(tints[0])
+		draw_polyline_colors(line, tints, float(gloss[1]), true)
+
+
+static func _profile_at(profile: Array, t: float) -> float:
+	for i in profile.size() - 1:
+		var a: Array = profile[i]
+		var b: Array = profile[i + 1]
+		if t <= float(b[0]):
+			return lerpf(float(a[1]), float(b[1]), (t - float(a[0])) / (float(b[0]) - float(a[0])))
+	return float(profile[profile.size() - 1][1])
+
+
+## Fio dourado entre a borda e o feltro, mais claro em cima.
+func _draw_trim(shape: int) -> void:
+	var trim: Color = _color("rail_line")
 	var outer: PackedVector2Array = contour(felt_rect, shape, 2.6)
 	var inner: PackedVector2Array = contour(felt_rect, shape, 0.0)
 	var trim_outer: PackedColorArray = PackedColorArray()
@@ -106,8 +197,8 @@ func _draw_rail(shape: int) -> void:
 ## Feltro: degradê do centro (mais claro, um pouco acima do meio) para a borda,
 ## textura de tecido, sombra da borda e a linha interna.
 func _draw_felt(shape: int) -> void:
-	var center_color: Color = get_theme_color("felt_center", T)
-	var edge_color: Color = get_theme_color("felt_edge", T)
+	var center_color: Color = _color("felt_center")
+	var edge_color: Color = _color("felt_edge")
 	var outline: PackedVector2Array = contour(felt_rect, shape, 0.0)
 	var focus: Vector2 = felt_rect.get_center() + Vector2(0, -felt_rect.size.y * 0.06)
 	var stops: Array = [[1.0, 0.0], [0.9, 0.22], [0.74, 0.5], [0.52, 0.78], [0.28, 0.94],
@@ -131,6 +222,9 @@ func _draw_felt(shape: int) -> void:
 		uvs.append(p / 64.0)
 	draw_colored_polygon(outline, Color(1, 1, 1, 0.07), uvs, _weave_texture())
 
+	if _style("felt_pattern") == 1:
+		_draw_suit_pattern(shape)
+
 	# Sombra que a borda faz no feltro.
 	var shade_in: PackedVector2Array = contour(felt_rect, shape, -14.0)
 	var dark: PackedColorArray = PackedColorArray()
@@ -141,10 +235,29 @@ func _draw_felt(shape: int) -> void:
 	_strips([outline, shade_in] as Array[PackedVector2Array],
 		[dark, clear] as Array[PackedColorArray])
 
-	if get_theme_constant("felt_lane", T) == 1:
+	if _style("felt_lane") == 1:
 		var lane: PackedVector2Array = contour(felt_rect, shape, -24.0)
 		lane.append(lane[0])
-		draw_polyline(lane, Color(get_theme_color("felt_line", T), 0.08), 1.5, true)
+		draw_polyline(lane, Color(_color("felt_line"), float(skin.get("lane_alpha", 0.08))),
+			1.5, true)
+
+
+## Estampa discreta de naipes: os quatro em fileiras desencontradas, em losango, só
+## dentro do feltro.
+func _draw_suit_pattern(shape: int) -> void:
+	var ink: Color = _color("pattern")
+	var inside: PackedVector2Array = contour(felt_rect, shape, -7.0)
+	var step: float = 26.0
+	var size: float = 9.0
+	var c: Vector2 = felt_rect.get_center()
+	var rows: int = int(felt_rect.size.y / (step * 0.62)) / 2 + 2
+	var cols: int = int(felt_rect.size.x / step) / 2 + 2
+	for row in range(-rows, rows + 1):
+		for col in range(-cols, cols + 1):
+			var at: Vector2 = c + Vector2((col + 0.5 * (row & 1)) * step, row * step * 0.62)
+			if not Geometry2D.is_point_in_polygon(at, inside):
+				continue
+			Paint.suit(self, posmod(col * 2 + row, 4), at, size, ink)
 
 
 ## Liga contornos vizinhos (todos com o mesmo número de pontos) em faixas de
@@ -165,6 +278,54 @@ func _strips(rings: Array[PackedVector2Array], colors: Array[PackedColorArray]) 
 			var d: int = (r + 1) * n + (i + 1) % n
 			indices.append_array(PackedInt32Array([a, b, c, b, d, c]))
 	RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), indices, points, tints)
+
+
+## Liga contornos abertos (o primeiro ponto repetido no fim) em faixas com textura; o
+## veio da madeira não volta para trás na emenda.
+func _strips_open(rings: Array[PackedVector2Array], colors: Array[PackedColorArray],
+		uvs: Array[PackedVector2Array], texture: Texture2D) -> void:
+	var points: PackedVector2Array = PackedVector2Array()
+	var tints: PackedColorArray = PackedColorArray()
+	var coords: PackedVector2Array = PackedVector2Array()
+	var indices: PackedInt32Array = PackedInt32Array()
+	var n: int = rings[0].size()
+	for r in rings.size():
+		points.append_array(rings[r])
+		tints.append_array(colors[r])
+		coords.append_array(uvs[r])
+	for r in rings.size() - 1:
+		for i in n - 1:
+			var a: int = r * n + i
+			var c: int = (r + 1) * n + i
+			indices.append_array(PackedInt32Array([a, a + 1, c, a + 1, c + 1, c]))
+	RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), indices, points, tints,
+		coords, PackedInt32Array(), PackedFloat32Array(), texture.get_rid())
+
+
+## Veio da madeira: linhas claras e escuras que ondulam devagar, com fibras finas. Repete
+## sem emenda no comprimento (x); a altura (y) cobre a borda inteira. Gerado uma vez.
+static func _wood_texture() -> Texture2D:
+	if _wood == null:
+		var w: int = 256
+		var h: int = 64
+		var image: Image = Image.create_empty(w, h, false, Image.FORMAT_RGBA8)
+		var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+		rng.seed = 11
+		var fibers: PackedFloat32Array = PackedFloat32Array()
+		for y in h:
+			fibers.append(rng.randf())
+		for y in h:
+			for x in w:
+				var a: float = TAU * x / w
+				var warp: float = 5.0 * sin(a + y * 0.05) + 2.5 * sin(a * 3.0 + 1.3) \
+					+ 1.2 * sin(a * 7.0 + y * 0.2)
+				var band: float = 0.5 + 0.5 * sin((y + warp) * 0.55)
+				var ring: float = pow(band, 6.0)
+				var fiber: float = fibers[clampi(y + int(warp * 0.3), 0, h - 1)]
+				var v: float = 0.9 - 0.32 * ring - 0.12 * fiber + 0.06 * rng.randf()
+				image.set_pixel(x, y, Color(v, v * 0.97, v * 0.93, 1.0))
+		_wood = ImageTexture.create_from_image(image)
+	return _wood
 
 
 ## Trama do feltro: ruído fino que se repete sem emenda, gerado uma vez.

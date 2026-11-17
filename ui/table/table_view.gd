@@ -108,6 +108,12 @@ var _watching: bool = false
 var reactions_enabled: bool = false
 ## A mesa espera o anfitrião voltar: os relógios ficam parados (SPEC 6.4).
 var frozen: bool = false
+## A mesa escolhida (ui/theme/tables.gd); vazio é a Salão.
+var table_skin: Dictionary = {}:
+	set(value):
+		table_skin = value
+		if _felt != null:
+			_felt.skin = value
 var _react: GlyphButton = null
 var _react_ready_at: int = 0
 
@@ -126,6 +132,7 @@ var _last_bets: Dictionary = {}   # posição -> ponto da aposta na tela (para i
 func _ready() -> void:
 	_felt = TableFelt.new()
 	_felt.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_felt.skin = table_skin
 	add_child(_felt)
 	_ad = AdSlot.new()
 	add_child(_ad)
