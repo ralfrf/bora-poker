@@ -3,7 +3,7 @@ extends "res://ui/screens/screen.gd"
 ## lotação. A pergunta ao Servidor 1 começa assim que a tela abre, o que também o acorda
 ## (ele dorme depois de 15 minutos sem ninguém); sem resposta em 3 s
 ## aparece "Conectando ao servidor…" com o aviso. Cheio, ou sem resposta depois de 2 minutos: "Em
-## manutenção". O Servidor 2 ainda não existe e aparece sempre "Em manutenção".
+## manutenção". O Servidor 2 ainda não existe e aparece sempre "Em breve".
 ## Em "Avançado" dá para usar um servidor WebSocket próprio; o endereço do oficial não
 ## aparece na tela.
 
@@ -129,7 +129,7 @@ func _refresh() -> void:
 	first.disabled = not available()
 	first.queue_redraw()
 	var second: RoomRow = _rows[1]
-	second.detail = "Em manutenção"
+	second.detail = "Em breve"
 	second.disabled = true
 	second.queue_redraw()
 	_enter.disabled = not available()

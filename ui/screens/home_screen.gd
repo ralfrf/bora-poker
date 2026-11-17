@@ -69,7 +69,8 @@ func _init(owner_profile: Profile) -> void:
 
 
 func _build() -> void:
-	_mode = profile.last_mode if READY.has(profile.last_mode) else READY[0]
+	# A tela inicial abre sempre com o Online marcado (pedido do dono, 17/11/2026).
+	_mode = Profile.MODE_ONLINE
 	_logo = Logo.new()
 	add_child(_logo)
 	_subtitle = Label.new()
