@@ -211,6 +211,7 @@ func _process(_delta: float) -> void:
 ## Sala de espera do anfitrião, com um bot e um convidado de verdade pela rede local.
 func _waiting_game(seats: int) -> WifiGame:
 	var options: Dictionary = OfflineOptions.build_room(OfflineOptions.clean({"seats": seats}))
+	options["felt"] = _felt
 	var host: WifiGame = WifiGame.new()
 	host.host("Rafa", 4, "aparelho-foto", options, FAST, Callable(),
 		["127.0.0.1"] as Array[String], 0, 47899)

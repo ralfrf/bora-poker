@@ -2,7 +2,7 @@ extends "res://ui/screens/screen.gd"
 ## Sala de espera do Wi-Fi e à distância (SPEC 11.1, item 5): quem já entrou, os bots, as opções e o
 ## código da sala. O dono põe e tira bots, expulsa e começa a partida; os outros
 ## esperam. Cada um troca o próprio avatar tocando no seu lugar. Quando a partida
-## começa, a mesa abre (sinal started).
+## começa, a mesa abre (sinal started). No canto, a miniatura da mesa que o dono escolheu.
 
 signal started
 ## Saiu da sala, foi expulso, a sala fechou ou a conexão falhou. notice: o porquê.
@@ -19,6 +19,9 @@ const Money := preload("res://engine/money.gd")
 const Protocol := preload("res://server/protocol.gd")
 const AvatarPicker := preload("res://ui/widgets/avatar_picker.gd")
 const Ads := preload("res://ui/app/ads.gd")
+const TableChoice := preload("res://ui/widgets/table_choice.gd")
+## Largura e altura da miniatura da mesa (canto de baixo, à direita das vagas).
+const FELT_SIZE: Vector2 = Vector2(136, 86)
 
 const CHIP_H: float = 46.0
 const TURN_TEXT: Dictionary = {0: "sem limite de tempo", 15: "15 s por jogada",
@@ -72,6 +75,7 @@ var _summary: Label = null
 var _code_title: Label = null
 var _code: Label = null
 var _hint: Label = null
+var _felt: TableChoice = null
 var _chips: Array[SeatChip] = []
 var _watching: Label = null
 var _bot_title: Label = null
@@ -123,6 +127,9 @@ func _build() -> void:
 	_hint.theme_type_variation = "SmallLabel"
 	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	add_child(_hint)
+	_felt = TableChoice.new()
+	_felt.pickable = false
+	add_child(_felt)
 	for i in 9:
 		var chip: SeatChip = SeatChip.new()
 		chip.visible = false
@@ -243,6 +250,8 @@ func _refresh() -> void:
 	var owner: bool = _game.is_owner()
 	var options: Dictionary = room.get("options", {})
 	var seats: int = int(options.get("seats", 0))
+	_felt.visible = not options.is_empty()
+	_felt.felt = str(options.get("felt", "salao"))
 	_title.text = str(room.get("name", "Entrando na sala…"))
 	_summary.text = _options_text(options) if not options.is_empty() else ""
 	_code.text = _game.room_code()
@@ -371,8 +380,10 @@ func _layout() -> void:
 	var rows: int = (visible_count + cols - 1) / cols
 	var after: float = top + rows * (CHIP_H + gap)
 	place(_watching, Rect2(b.position.x, after, b.size.x, 20))
-	place(_hint, Rect2(b.position.x, after + (24.0 if _watching.text != "" else 0.0), b.size.x,
-		maxf(20.0, b.end.y - after)))
+	# A miniatura fica embaixo, à direita; o aviso ocupa o resto da largura.
+	place(_felt, Rect2(b.end - FELT_SIZE, FELT_SIZE))
+	place(_hint, Rect2(b.position.x, after + (24.0 if _watching.text != "" else 0.0),
+		b.size.x - FELT_SIZE.x - 12.0, maxf(20.0, b.end.y - after)))
 	var y: float = col.position.y
 	place(_bot_title, Rect2(col.position.x, y, col.size.x, 18))
 	y += 22.0

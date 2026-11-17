@@ -20,6 +20,13 @@ var felt: String = Tables.SALAO:
 			_felt.skin = Tables.skin(felt)
 		queue_redraw()
 
+## Falso: só mostra a mesa (sala de espera), sem trocar no toque e sem o aviso do Beta.
+var pickable: bool = true:
+	set(value):
+		pickable = value
+		mouse_filter = Control.MOUSE_FILTER_STOP if value else Control.MOUSE_FILTER_IGNORE
+		queue_redraw()
+
 var _felt: TableFelt = null
 
 
@@ -59,9 +66,9 @@ func _draw() -> void:
 	var font_size: int = get_theme_font_size("small", T)
 	var y: float = THUMB_H + 16.0
 	var title: String = str(Tables.skin(felt)["name"])
-	draw_string(font, Vector2(0, y), "Mesa: %s  ›" % title, HORIZONTAL_ALIGNMENT_CENTER,
-		size.x, font_size, get_theme_color("text", T))
-	if felt != Tables.SALAO:
+	draw_string(font, Vector2(0, y), ("Mesa: %s  ›" if pickable else "Mesa: %s") % title,
+		HORIZONTAL_ALIGNMENT_CENTER, size.x, font_size, get_theme_color("text", T))
+	if pickable and felt != Tables.SALAO:
 		draw_string(font, Vector2(0, y + 17.0), "Grátis no Beta.", HORIZONTAL_ALIGNMENT_CENTER,
 			size.x, font_size, get_theme_color("accent", T))
 		draw_string(small, Vector2(0, y + 33.0), "Depois, só na Loja.",
