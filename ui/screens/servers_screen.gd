@@ -1,7 +1,7 @@
 extends "res://ui/screens/screen.gd"
 ## Amigos à distância, primeiro passo (SPEC 9.3): os servidores, cada um com a % de
 ## lotação. A pergunta ao Servidor 1 começa assim que a tela abre, o que também o acorda
-## (o plano gratuito dorme depois de 15 minutos sem ninguém); sem resposta em 3 s
+## (ele dorme depois de 15 minutos sem ninguém); sem resposta em 3 s
 ## aparece "Acordando o servidor…". Cheio, ou sem resposta depois de 2 minutos: "Em
 ## manutenção". O Servidor 2 ainda não existe e aparece sempre "Em manutenção".
 ## Em "Avançado" dá para usar um servidor WebSocket próprio; o endereço do oficial não
@@ -13,6 +13,7 @@ signal chosen(address: String, server_name: String)
 
 const Profile := preload("res://ui/app/profile.gd")
 const LoadProbe := preload("res://net/load_probe.gd")
+const RemoteGame := preload("res://ui/app/remote_game.gd")
 const RoomRow := preload("res://ui/widgets/room_row.gd")
 const EntryPanel := preload("res://ui/widgets/entry_panel.gd")
 
@@ -137,8 +138,7 @@ func _refresh() -> void:
 		tips.append(_notice)
 	match probe.state:
 		LoadProbe.State.WAKING:
-			tips.append("O servidor gratuito dorme quando ninguém está jogando. Na primeira " \
-				+ "partida do dia ele pode levar até 1 minuto para acordar.")
+			tips.append(RemoteGame.wake_tip())
 		LoadProbe.State.DOWN:
 			tips.append("O servidor não respondeu. Confira a internet do celular e tente de novo " \
 				+ "mais tarde.")

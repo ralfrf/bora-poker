@@ -13,3 +13,9 @@ static func rewarded(done: Callable) -> void:
 ## partida seguinte. Nunca durante uma mão. Hoje não mostra nada e segue na hora.
 static func interstitial(done: Callable) -> void:
 	done.call_deferred()
+
+
+## Há anúncio de verdade para mostrar? Hoje não (sem SDK); as telas só oferecem o
+## anúncio quando houver.
+static func available() -> bool:
+	return false

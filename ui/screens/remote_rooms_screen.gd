@@ -152,8 +152,7 @@ func _refresh() -> void:
 	if _notice != "":
 		tips.append(_notice)
 	if _game.waking():
-		tips.append("O servidor gratuito dorme quando ninguém está jogando. Na primeira " \
-			+ "partida do dia ele pode levar até 1 minuto para acordar.")
+		tips.append(RemoteGame.wake_tip())
 	elif _game.link == RemoteGame.Link.ONLINE and _rooms.is_empty():
 		tips.append("Crie uma sala e passe o código aos amigos, ou espere a sala deles " \
 			+ "aparecer aqui.")
