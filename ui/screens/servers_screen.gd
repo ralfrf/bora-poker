@@ -4,7 +4,8 @@ extends "res://ui/screens/screen.gd"
 ## (o plano gratuito dorme depois de 15 minutos sem ninguém); sem resposta em 3 s
 ## aparece "Acordando o servidor…". Cheio, ou sem resposta depois de 2 minutos: "Em
 ## manutenção". O Servidor 2 ainda não existe e aparece sempre "Em manutenção".
-## Em "Avançado" dá para trocar o endereço do Servidor 1 (testes).
+## Em "Avançado" dá para usar um servidor WebSocket próprio; o endereço do oficial não
+## aparece na tela.
 
 signal back
 ## Escolheu um servidor: endereço do WebSocket e o nome para mostrar.
@@ -72,9 +73,11 @@ func _build() -> void:
 	_enter = action_button("Entrar", true)
 	_enter.pressed.connect(_on_row.bind(0))
 	add_child(_enter)
-	_panel = EntryPanel.new("Endereço do servidor",
-		"Só para testes. Deixe vazio para voltar ao padrão (%s)." % LoadProbe.DEFAULT_URL,
-		LoadProbe.DEFAULT_URL, 200, LineEdit.KEYBOARD_TYPE_URL, "Salvar", 420.0)
+	# O endereço do servidor oficial não aparece na tela: o campo fica vazio quando é ele.
+	_panel = EntryPanel.new("Servidor próprio",
+		"Para quem deseja conectar um serviço próprio de WebSocket (WS). Deixe vazio " \
+		+ "para usar os servidores do Bora Poker.",
+		"wss://seu-servidor.com", 200, LineEdit.KEYBOARD_TYPE_URL, "Salvar", 420.0)
 	_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_panel.entered.connect(_on_address)
 	add_child(_panel)
@@ -121,7 +124,7 @@ func _refresh() -> void:
 		LoadProbe.State.OLD:
 			first.detail = "Atualize o app para usar este servidor"
 	if profile.server_url != "" and LoadProbe.normalize(profile.server_url) != LoadProbe.DEFAULT_URL:
-		first.detail += " · endereço próprio"
+		first.detail += " · servidor próprio"
 	first.disabled = not available()
 	first.queue_redraw()
 	var second: RoomRow = _rows[1]
@@ -176,7 +179,7 @@ func _open_advanced() -> void:
 func _on_address(text: String) -> void:
 	var clean: String = text.strip_edges()
 	if clean != "" and not LoadProbe.is_valid(clean):
-		_panel.show_error("Endereço inválido. Exemplo: %s" % LoadProbe.DEFAULT_URL)
+		_panel.show_error("Endereço inválido. Exemplo: wss://seu-servidor.com")
 		return
 	_panel.close()
 	var normalized: String = LoadProbe.normalize(clean)
