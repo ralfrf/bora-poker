@@ -46,7 +46,7 @@ const DEFAULT_CONFIG: Dictionary = {
 	"rebuy_ms": 0,              # prazo da oferta de recompra; 0 = sem prazo (SPEC 3.4)
 	"held_ms": 300000,          # fichas guardadas de quem saiu: 5 min (SPEC 6.2)
 	"offline_ms": 60000,        # lugar guardado de quem caiu (SPEC 6.2 e 6.3)
-	"quit_ms": 120000,          # torneio: quem tocou em "Sair" tem 2 min para voltar (SPEC 6.3)
+	"return_ms": 120000,        # torneio: quem saiu ou caiu tem 2 min para voltar (SPEC 6.3)
 	"allow_empty": false,       # sala sem humanos continua aberta (simulações)
 	"bot_evaluations": 0,       # teto de simulação do Difícil (0 = o padrão)
 	"bot_style": "",            # força um estilo para todos os bots (simulações)
@@ -1122,9 +1122,9 @@ func _check_over() -> bool:
 	return true
 
 
-## Torneio, entre mãos (SPEC 6.3): quem tocou em "Sair" e não voltou em quit_ms sai do
-## torneio, e as fichas dele são divididas entre quem continua; no mano a mano, um
-## ausente há mais de offline_ms entrega as fichas e o outro é o campeão.
+## Torneio, entre mãos (SPEC 6.3): quem saiu ou caiu e não voltou em return_ms sai do
+## torneio, e as fichas dele são divididas entre quem continua (no mano a mano, o outro
+## é o campeão). Pedido do dono, 17/11/2026.
 func _walkover() -> bool:
 	if table.format != Table.TOURNAMENT or table.hand_number == 0:
 		return false
@@ -1134,23 +1134,18 @@ func _walkover() -> bool:
 	var now: int = _clock.now_ms()
 	for seat: int in alive:
 		var member: Member = member_at(seat)
-		if member == null or not member.gone or member.offline_since < 0:
-			continue
-		var away_for: int = now - member.offline_since
-		var quit_over: bool = member.quit and away_for >= int(_config["quit_ms"])
-		var duel_over: bool = alive.size() == 2 and away_for >= int(_config["offline_ms"])
-		if not quit_over and not duel_over:
+		if member == null or member.is_bot or member.offline_since < 0 \
+				or now - member.offline_since < int(_config["return_ms"]):
 			continue
 		var response: Dictionary = table.concede(seat)
 		if not response["ok"]:
 			continue
-		if member.quit:
-			# Saiu e não voltou: deixa a sala (o placar guarda a colocação).
-			_leave_table(member)
-			members.erase(member.id)
-			_check_owner()
-			if phase == Protocol.ENDED:
-				return true
+		# Não voltou: deixa a sala (o placar guarda a colocação).
+		_leave_table(member)
+		members.erase(member.id)
+		_check_owner()
+		if phase == Protocol.ENDED:
+			return true
 		_broadcast(response["events"])
 		return true
 	return false
@@ -1467,15 +1462,13 @@ func _table_view() -> Dictionary:
 
 
 ## Quanto falta para o lugar ser liberado (a mesa mostra a contagem), ou -1: no
-## torneio, quem tocou em "Sair" (quit_ms); no clássico, quem caiu (offline_ms).
+## torneio, quem saiu ou caiu (return_ms); no clássico, quem caiu (offline_ms).
 func _remove_ms(member: Member) -> int:
 	if member.is_bot or member.seat < 0 or member.offline_since < 0 or phase != Protocol.PLAYING:
 		return -1
 	var away_for: int = _clock.now_ms() - member.offline_since
 	if table.format == Table.TOURNAMENT:
-		if member.quit and member.gone:
-			return maxi(0, int(_config["quit_ms"]) - away_for)
-		return -1
+		return maxi(0, int(_config["return_ms"]) - away_for)
 	if member.connected and not member.quit:
 		return maxi(0, int(_config["offline_ms"]) - away_for)
 	return -1

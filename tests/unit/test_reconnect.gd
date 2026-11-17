@@ -297,12 +297,14 @@ func test_tournament_heads_up_with_absent_player_ends() -> void:
 	var b: String = _join(room, "Bia", "dev-b")["id"]
 	room.handle(a, {"t": Protocol.START})
 	room.drop_connection(b)
-	_clock.advance(30000)
+	assert_eq(_member_info(a, b).get("remove_ms"), 120000, "caiu no torneio: 2 minutos")
+	_clock.advance(90000)
+	_fold_until(room, func() -> bool: return not room.table.hand_in_progress())
 	room.tick()
-	assert_false(room.is_closed(), "30 s ainda não contam")
+	assert_false(room.is_closed(), "90 s ainda não contam")
 	_clock.advance(30000)
 	_fold_until(room, func() -> bool: return room.is_closed())
-	assert_true(room.is_closed(), "mano a mano com ausente há mais de 60 s: acabou")
+	assert_true(room.is_closed(), "mano a mano com ausente há 2 minutos: acabou")
 	var podium: Array = room.final.get("podium", [])
 	assert_eq(podium.size() > 0 and podium[0]["id"] == a, true, "quem ficou é o campeão")
 
