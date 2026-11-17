@@ -222,8 +222,11 @@ func _draw_felt(shape: int) -> void:
 		uvs.append(p / 64.0)
 	draw_colored_polygon(outline, Color(1, 1, 1, 0.07), uvs, _weave_texture())
 
-	if _style("felt_pattern") == 1:
-		_draw_suit_pattern(shape)
+	match _style("felt_pattern"):
+		1:
+			_draw_suit_pattern(shape)
+		2:
+			_draw_diamond_pattern(shape)
 
 	# Sombra que a borda faz no feltro.
 	var shade_in: PackedVector2Array = contour(felt_rect, shape, -14.0)
@@ -258,6 +261,41 @@ func _draw_suit_pattern(shape: int) -> void:
 			if not Geometry2D.is_point_in_polygon(at, inside):
 				continue
 			Paint.suit(self, posmod(col * 2 + row, 4), at, size, ink)
+
+
+## Treliça de losangos: linhas finas em diagonal e um naipe maior no meio de cada
+## losango, só dentro do feltro.
+func _draw_diamond_pattern(shape: int) -> void:
+	var ink: Color = _color("pattern")
+	var inside: PackedVector2Array = contour(felt_rect, shape, -7.0)
+	var w: float = 48.0
+	var h: float = 34.0
+	var c: Vector2 = felt_rect.get_center()
+	var reach: float = felt_rect.size.length()
+	# Lados dos losangos: 2x/w ± 2y/h = n ímpar, contando do centro do feltro.
+	var count: int = int(2.0 * (felt_rect.size.x / w + felt_rect.size.y / h)) + 2
+	var line_color: Color = Color(ink, ink.a * 0.7)
+	for n in range(-count, count + 1):
+		if n % 2 == 0:
+			continue
+		var start: Vector2 = c + Vector2(n * w / 2.0, 0)
+		for dir: Vector2 in [Vector2(w, -h).normalized(), Vector2(w, h).normalized()]:
+			var segment: PackedVector2Array = PackedVector2Array([start - dir * reach,
+				start + dir * reach])
+			for piece: PackedVector2Array in Geometry2D.intersect_polyline_with_polygon(
+					segment, inside):
+				draw_polyline(piece, line_color, 1.0, true)
+	# Naipes nos centros: (i·w/2, j·h/2) com i + j par.
+	var cols: int = int(felt_rect.size.x / w) + 2
+	var rows: int = int(felt_rect.size.y / h) + 2
+	for j in range(-rows, rows + 1):
+		for i in range(-cols, cols + 1):
+			if (i + j) % 2 != 0:
+				continue
+			var at: Vector2 = c + Vector2(i * w / 2.0, j * h / 2.0)
+			if not Geometry2D.is_point_in_polygon(at, inside):
+				continue
+			Paint.suit(self, posmod((i + 3 * j) / 2, 4), at, 12.0, ink)
 
 
 ## Liga contornos vizinhos (todos com o mesmo número de pontos) em faixas de

@@ -7,7 +7,8 @@ extends RefCounted
 ##   felt_line) e mais pattern (cor da estampa, com transparência).
 ## style (inteiros):
 ##   rail_kind:    0 couro acolchoado, 1 madeira envernizada
-##   felt_pattern: 0 liso, 1 estampa discreta de naipes
+##   felt_pattern: 0 liso, 1 naipes pequenos em fileiras, 2 treliça de losangos com
+##                 um naipe maior em cada
 ## lane_alpha: força da linha interna do feltro (0 a 1).
 
 const SALAO: String = "salao"
@@ -24,6 +25,17 @@ const ALL: Dictionary = {
 		},
 		"style": {"rail_kind": 1, "felt_pattern": 1},
 		"lane_alpha": 0.4,
+	},
+	"safira": {
+		"name": "Safira",
+		"colors": {
+			"felt_center": "#2A4E96", "felt_edge": "#0A1634",
+			"rail": "#111317", "rail_hi": "#737B89",
+			"rail_line": "#C9D2DE", "felt_line": "#D8E0EC",
+			"pattern": "#050E2652",
+		},
+		"style": {"rail_kind": 0, "felt_pattern": 2},
+		"lane_alpha": 0.32,
 	},
 }
 
