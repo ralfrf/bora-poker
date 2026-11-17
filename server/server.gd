@@ -14,6 +14,7 @@ const Protocol := preload("res://server/protocol.gd")
 const Clock := preload("res://server/clock.gd")
 const Wire := preload("res://server/wire.gd")
 const Load := preload("res://server/load.gd")
+const PasswordGuard := preload("res://server/password_guard.gd")
 
 const DEFAULT_MAX_ROOMS: int = 20
 const MAX_DEVICE: int = 64
@@ -24,6 +25,9 @@ const CODE_LENGTH: int = 4
 const RATE_BURST: int = 40
 ## Com a CPU do último minuto acima disso, sala nova é recusada (SPEC 9.3).
 const CPU_FULL: int = 90
+## A lista de salas à distância leva no máximo isso (só as que aceitam gente nova).
+const MAX_LISTED: int = 60
+const MAX_PASSWORD: int = 8
 
 
 class Session:
@@ -53,6 +57,8 @@ var _seed_source: Callable = Callable()
 var _sessions: Dictionary = {}   # peer -> Session
 var _routes: Dictionary = {}     # "sala/participante" -> peer
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
+var _guard: PasswordGuard = null
+var _open_only: bool = false     # a lista mostra só as salas que aceitam gente nova
 
 
 ## config: {max_rooms, room: ajustes repassados a cada sala, slots: vagas em
@@ -66,6 +72,8 @@ func _init(transport: Object, clock: Clock = null, config: Dictionary = {},
 	_max_rooms = int(config.get("max_rooms", DEFAULT_MAX_ROOMS))
 	_room_config = config.get("room", {})
 	_rate = int(config.get("rate", 0))
+	_open_only = bool(config.get("list_open_only", false))
+	_guard = PasswordGuard.new(_clock)
 	capacity = Load.new(int(config.get("slots", 0)), _clock, config.get("cpu_reader", Callable()),
 		float(config.get("cpu_share", 1.0)))
 	_seed_source = seed_source
@@ -95,6 +103,7 @@ func tick() -> void:
 	for room_id: String in rooms.keys():
 		if rooms[room_id].is_closed():
 			rooms.erase(room_id)
+			_guard.forget_room(room_id)
 	capacity.sample()
 
 
@@ -186,8 +195,14 @@ func _message(session: Session, data: Dictionary) -> void:
 		Protocol.LIST_ROOMS:
 			var list: Array = []
 			for room: Room in rooms.values():
-				if not room.is_closed():
-					list.append(room.summary())
+				if room.is_closed():
+					continue
+				var summary: Dictionary = room.summary()
+				if _open_only and not summary["open"]:
+					continue
+				list.append(summary)
+				if _open_only and list.size() >= MAX_LISTED:
+					break
 			_reply(session, {"t": Protocol.ROOMS, "rooms": list})
 		Protocol.CREATE_ROOM:
 			_create_room(session, data)
@@ -266,10 +281,41 @@ func _join_room(session: Session, data: Dictionary) -> void:
 	if room == null or room.is_closed():
 		_refuse(session, Protocol.E_NO_ROOM, "sala não encontrada")
 		return
+	if not _password_ok(session, room, data.get("password", "")):
+		return
 	if spectate and not _has_room_for(Load.WATCHER_WEIGHT, false):
 		_refuse(session, Protocol.E_FULL, "o servidor está cheio; tente mais tarde")
 		return
 	_enter(session, room, spectate)
+
+
+## Sala com senha (SPEC 9.3): confere e conta as erradas. Responde o erro e devolve
+## falso quando não pode entrar. Senha vazia é só o pedido dela: não conta como errada.
+func _password_ok(session: Session, room: Room, raw: Variant) -> bool:
+	if not room.needs_password(session.device, session.nick):
+		return true
+	var password: String = (raw as String).left(MAX_PASSWORD) if typeof(raw) == TYPE_STRING else ""
+	var ip: String = str(_transport.call("peer_ip", session.peer)) \
+		if _transport.has_method("peer_ip") else ""
+	var wait: int = _guard.wait_ms(room.id, session.device, ip)
+	if wait > 0:
+		_refuse_password(session, "muitas tentativas erradas; espere %d s" % ceili(wait / 1000.0), wait)
+		return false
+	if password == "":
+		_refuse_password(session, "esta sala tem senha", 0)
+		return false
+	if room.password_matches(password):
+		return true
+	wait = _guard.failed(room.id, session.device, ip)
+	_refuse_password(session, "senha errada" if wait == 0
+		else "senha errada; espere %d s para tentar de novo" % ceili(wait / 1000.0), wait)
+	return false
+
+
+func _refuse_password(session: Session, text: String, wait: int) -> void:
+	var message: Dictionary = Protocol.error(Protocol.E_PASSWORD, text)
+	message["wait_ms"] = wait
+	_reply(session, message)
 
 
 func _enter(session: Session, room: Room, spectate: bool) -> void:

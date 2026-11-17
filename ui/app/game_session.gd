@@ -13,6 +13,14 @@ var last_state: Dictionary = {}
 ## A mensagem closed (placar), quando a sala encerra.
 var final: Dictionary = {}
 
+## Salas com amigos (Wi-Fi e à distância): o que a sala de espera usa.
+## Por que não deu (texto em português, já para a tela).
+var error_text: String = ""
+## A partida já começou e há lugar livre: a tela pergunta se quer entrar (confirm_join).
+var confirm_seat: bool = false
+## Wi-Fi: a sala roda neste celular.
+var is_host: bool = false
+
 var _client: Object = null
 
 
@@ -147,6 +155,39 @@ func failure() -> String:
 	return ""
 
 
+## A conexão falhou de vez (error_text diz por quê).
+func failed() -> bool:
+	return false
+
+
+## Confirma a entrada depois da pergunta "Quer entrar e jogar?".
+func confirm_join() -> void:
+	confirm_seat = false
+
+
+## O código da sala para mostrar na sala de espera ("" = nenhum).
+func room_code() -> String:
+	return ""
+
+
+## Dica da sala de espera, embaixo dos lugares.
+func waiting_hint() -> String:
+	return ""
+
+
+## Aviso quando a sala fecha antes de a partida começar.
+func closed_notice() -> String:
+	return "O dono fechou a sala."
+
+
 ## A pergunta de "Sair": [título, texto, botão de confirmar].
 func leave_question() -> Array[String]:
 	return ["Sair da mesa?", "A partida termina e você vê o placar.", "Sair"]
+
+
+## Texto do servidor como frase: "a sala está cheia" -> "A sala está cheia.".
+static func sentence(text: String) -> String:
+	if text == "":
+		return ""
+	text = text.left(1).to_upper() + text.substr(1)
+	return text if text.ends_with(".") or text.ends_with("!") else text + "."

@@ -4,7 +4,8 @@ extends "res://ui/screens/screen.gd"
 ## ficam guardadas para a próxima vez.
 ##
 ## A mesma tela cria a sala do Wi-Fi (wifi verdadeiro): sem bots (o dono põe na sala de
-## espera) e com "Manter sala aberta" no clássico.
+## espera) e com "Manter sala aberta" no clássico. À distância (remote), também a senha
+## opcional de 4 números (SPEC 4.1 e 9.3).
 
 signal start(choice: Dictionary)
 signal back
@@ -14,6 +15,8 @@ const OfflineOptions := preload("res://ui/app/offline_options.gd")
 const ChoiceRow := preload("res://ui/widgets/choice_row.gd")
 const Stepper := preload("res://ui/widgets/stepper.gd")
 const Roster := preload("res://bots/roster.gd")
+const Room := preload("res://server/room.gd")
+const EntryPanel := preload("res://ui/widgets/entry_panel.gd")
 
 const ROW_H: float = 62.0
 const PLURALS: Dictionary = {1: "fáceis", 2: "médios", 3: "difíceis"}
@@ -33,18 +36,23 @@ var _turn: ChoiceRow = null
 var _rebuys: ChoiceRow = null
 var _keep: ChoiceRow = null
 var _wifi: bool = false
+var _remote: bool = false
+var _password: ChoiceRow = null
+var _password_panel: EntryPanel = null
+var _password_text: String = ""
 var _summary_big: Label = null
 var _summary: Label = null
 var _start: Button = null
 
 
-func _init(owner_profile: Profile, wifi: bool = false) -> void:
+func _init(owner_profile: Profile, wifi: bool = false, remote: bool = false) -> void:
 	profile = owner_profile
-	_wifi = wifi
+	_wifi = wifi or remote
+	_remote = remote
 
 
 func _build() -> void:
-	choice = OfflineOptions.clean(profile.wifi if _wifi else profile.offline)
+	choice = OfflineOptions.clean(profile.online if _remote else (profile.wifi if _wifi else profile.offline))
 	_back = Button.new()
 	_back.text = "‹"
 	_back.theme_type_variation = "QuietButton"
@@ -81,6 +89,11 @@ func _build() -> void:
 	for row: Control in [_format, _seats, _bots, _turn, _stack, _blinds, _minutes, _rebuys, _keep]:
 		add_child(row)
 	_bots.visible = not _wifi
+	_password_text = profile.room_password if _remote else ""
+	_password = ChoiceRow.new("Senha", _password_labels(), 1 if _password_text != "" else 0)
+	_password.changed.connect(_on_password)
+	_password.visible = _remote
+	add_child(_password)
 
 	_summary_big = Label.new()
 	_summary_big.theme_type_variation = "TitleLabel"
@@ -94,6 +107,15 @@ func _build() -> void:
 	_start = action_button("Criar sala" if _wifi else "Começar", true)
 	_start.pressed.connect(_on_start)
 	add_child(_start)
+	_password_panel = EntryPanel.new("Senha da sala",
+		"4 números. Passe a senha só para quem você quer na mesa.", "Ex.: 2580", 4,
+		LineEdit.KEYBOARD_TYPE_NUMBER, "Pronto")
+	_password_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_password_panel.entered.connect(_on_password_typed)
+	_password_panel.cancelled.connect(func() -> void:
+		if _password_text == "":
+			_password.set_labels(_password_labels(), 0))
+	add_child(_password_panel)
 	_refresh()
 
 
@@ -119,6 +141,8 @@ func _layout() -> void:
 		right.append(_minutes)
 	else:
 		right.append_array([_blinds, _rebuys])
+	if _remote:
+		right.append(_password)
 	for i in left.size():
 		place(left[i], Rect2(b.position.x, top + i * step, w, ROW_H))
 	for i in right.size():
@@ -151,6 +175,8 @@ func _refresh() -> void:
 	if _wifi:
 		_summary.text = "Você e até %d %s. Bots, se quiser, na sala de espera." % [
 			bots, "amigo" if bots == 1 else "amigos"]
+		if _remote and _password_text != "":
+			_summary.text += " Com senha."
 		if is_node_ready():
 			_layout()
 		return
@@ -164,7 +190,40 @@ func _refresh() -> void:
 		_layout()
 
 
+## Rótulos da senha: "Não" e, com senha escolhida, ela mesma (para o dono conferir).
+func _password_labels() -> Array[String]:
+	return ["Não", _password_text if _password_text != "" else "Sim"]
+
+
+func _on_password(index: int) -> void:
+	if index == 1:
+		_password_panel.open(_password_text)
+	else:
+		_password_text = ""
+		_password.set_labels(_password_labels(), 0)
+		_refresh()
+
+
+func _on_password_typed(text: String) -> void:
+	var clean: String = text.strip_edges()
+	if not Room.is_password(clean):
+		_password_panel.show_error("Digite exatamente 4 números.")
+		return
+	_password_panel.close()
+	_password_text = clean
+	_password.set_labels(_password_labels(), 1)
+	_refresh()
+
+
 func _on_start() -> void:
+	if _remote:
+		profile.online = choice.duplicate()
+		profile.room_password = _password_text
+		profile.save()
+		var sent: Dictionary = choice.duplicate()
+		sent["password"] = _password_text
+		start.emit(sent)
+		return
 	if _wifi:
 		profile.wifi = choice.duplicate()
 		profile.save()
@@ -177,5 +236,10 @@ func _on_start() -> void:
 
 
 func go_back() -> bool:
+	if _password_panel != null and _password_panel.visible:
+		_password_panel.close()
+		if _password_text == "":
+			_password.set_labels(_password_labels(), 0)
+		return true
 	back.emit()
 	return true

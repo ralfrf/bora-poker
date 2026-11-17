@@ -48,14 +48,9 @@ const SAVE_EVERY_MS: int = 5000
 ## Um arquivo de sala mais velho do que isto nem é lido (o placar já não interessa).
 const SAVE_MAX_AGE_MS: int = 1800000
 
-var is_host: bool = false
 var link: Link = Link.CONNECTING
-## Por que não deu (texto em português, já para a tela).
-var error_text: String = ""
 ## Saiu da sala por pedido próprio ou expulso ("left" ou "kicked").
 var left_reason: String = ""
-## A partida já começou e há lugar livre: a tela pergunta se quer entrar (confirm_join).
-var confirm_seat: bool = false
 ## O código da sala e o IP do anfitrião na rede.
 var code: String = ""
 var host_ip: String = ""
@@ -242,7 +237,7 @@ func _track(message: Dictionary) -> void:
 			if code_name == Protocol.E_VERSION:
 				_fail("A versão do app do anfitrião é diferente. Atualizem o app nos dois celulares.")
 			elif _joining:
-				_fail(text.left(1).to_upper() + text.substr(1) + ".")
+				_fail(sentence(text))
 
 
 ## Convidado: entra na sala de antes (reconexão) ou na única que houver.
@@ -276,6 +271,27 @@ func confirm_join() -> void:
 		return
 	_joining = true
 	send({"t": Protocol.JOIN_ROOM, "room": _pending_room, "spectate": false})
+
+
+func failed() -> bool:
+	return link == Link.FAILED
+
+
+## O código derivado do IP do anfitrião (SPEC 9.2).
+func room_code() -> String:
+	return RoomCode.pretty(RoomCode.encode(host_ip)) if host_ip != "" else ""
+
+
+func waiting_hint() -> String:
+	if not is_host:
+		return ""
+	return "Os amigos precisam estar na mesma rede Wi-Fi. A sala aparece sozinha " \
+		+ "para eles; se não aparecer, passe o código. Se a rede bloquear, ligue o ponto " \
+		+ "de acesso deste celular e peça para eles se conectarem nele."
+
+
+func closed_notice() -> String:
+	return "O anfitrião fechou a sala."
 
 
 # ---------------------------------------------------------------- a sala muda de celular
@@ -585,11 +601,9 @@ func _fail(text: String) -> void:
 ## gente nova.
 func _announcement(room: Object) -> Dictionary:
 	var summary: Dictionary = room.call("summary")
-	var options: Dictionary = room.get("options")
 	var seats: int = int(summary["seats"])
 	var players: int = int(summary["players"])
-	var lobby: bool = summary["phase"] == Protocol.LOBBY
-	var open: bool = players < seats and (lobby or bool(options["keep_open"]))
+	var open: bool = summary["open"]
 	return {
 		"name": summary["name"], "format": summary["format"], "seats": seats,
 		"players": players, "phase": summary["phase"], "open": open, "port": port,

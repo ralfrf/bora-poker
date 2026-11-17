@@ -21,6 +21,10 @@ enum Status { IDLE, CONNECTING, OPEN, LOST }
 
 var status: Status = Status.IDLE
 var url: String = ""
+## Batimento e prazos (no Wi-Fi, os de cima; à distância, mais espaçados).
+var ping_ms: int = PING_MS
+var silence_ms: int = SILENCE_MS
+var connect_ms: int = CONNECT_MS
 
 var _ws: WebSocketPeer = null
 var _clock: Clock = null
@@ -76,7 +80,7 @@ func poll() -> Array[Dictionary]:
 	_ws.poll()
 	var state: int = _ws.get_ready_state()
 	if state == WebSocketPeer.STATE_CONNECTING:
-		if now - _since > CONNECT_MS:
+		if now - _since > connect_ms:
 			_lose()
 		return messages
 	if status == Status.CONNECTING and state == WebSocketPeer.STATE_OPEN:
@@ -99,10 +103,10 @@ func poll() -> Array[Dictionary]:
 	if state != WebSocketPeer.STATE_OPEN:
 		_lose()
 		return messages
-	if now - _last_ping >= PING_MS:
+	if now - _last_ping >= ping_ms:
 		_last_ping = now
 		_ws.send_text(Codec.encode({"t": Protocol.PING}))
-	if now - _last_heard > SILENCE_MS:
+	if now - _last_heard > silence_ms:
 		_lose()
 	return messages
 

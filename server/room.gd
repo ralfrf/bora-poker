@@ -30,6 +30,8 @@ const DEFAULT_NICK: String = "Jogador"
 const AVATARS: int = 10
 const AWAY_AFTER_TIMEOUTS: int = 2
 const MAX_STEPS_PER_TICK: int = 64
+## Senha da sala, só à distância (SPEC 4.1 e 9.3): 4 dígitos, ou vazia.
+const PASSWORD_DIGITS: int = 4
 
 ## Prazos e ajustes que não são opção da sala. As simulações zeram as esperas.
 const DEFAULT_CONFIG: Dictionary = {
@@ -119,6 +121,8 @@ var history: HandLog = HandLog.new()   ## as últimas mãos terminadas (SPEC 11.
 var _empty_since: int = -1         ## relógio real desde quando a partida está sem humanos
 var _last_offline: int = -1        ## relógio real da queda ou saída do último humano que saiu
 var _notes: Array = []             ## avisos da sala que vão na próxima mensagem "state"
+## Senha (SPEC 9.3): fica só aqui; não vai nas opções, no state, na lista nem no retrato.
+var _password: String = ""
 
 
 ## Confere as opções de criação (SPEC 4.1). Devolve {ok, error, options}, com os
@@ -135,6 +139,9 @@ static func normalize_options(raw: Variant) -> Dictionary:
 	var keep_open: Variant = raw.get("keep_open", false)
 	if typeof(keep_open) != TYPE_BOOL:
 		return _bad_options("opção de sala aberta inválida")
+	var password: Variant = raw.get("password", "")
+	if typeof(password) != TYPE_STRING or not (password == "" or is_password(password)):
+		return _bad_options("a senha precisa ter 4 números")
 	var table_options: Dictionary = {"format": raw.get("format", Table.CLASSIC)}
 	for key: String in ["starting_stack", "small_blind", "big_blind", "rebuy_limit", "level_minutes"]:
 		if raw.has(key):
@@ -164,7 +171,18 @@ static func normalize_options(raw: Variant) -> Dictionary:
 		"turn_seconds": turn,
 		"keep_open": keep_open and probe.format == Table.CLASSIC,
 		"bots": bots,
+		"password": password,
 	}}
+
+
+## Senha válida: exatamente 4 dígitos de 0 a 9.
+static func is_password(text: String) -> bool:
+	if text.length() != PASSWORD_DIGITS:
+		return false
+	for i in text.length():
+		if text.unicode_at(i) < 48 or text.unicode_at(i) > 57:
+			return false
+	return true
 
 
 ## Apelido como vai aparecer: sem espaços nas pontas, sem caracteres de controle e com
@@ -185,6 +203,8 @@ func _init(room_id: String, room_options: Dictionary, clock: Clock, send: Callab
 		config: Dictionary = {}, seed_source: Callable = Callable()) -> void:
 	id = room_id
 	options = room_options.duplicate(true)
+	_password = str(options.get("password", ""))
+	options.erase("password")
 	_clock = clock
 	_send = send
 	_seed_source = seed_source
@@ -252,6 +272,23 @@ func join(profile: Dictionary, spectate: bool = false) -> Dictionary:
 		_set_owner(member)
 		_empty_since = -1
 	return {"ok": true, "error": "", "id": member.id, "resumed": false}
+
+
+## A sala tem senha e quem chega precisa dela: quem já está na sala (volta de uma
+## queda) ou tem fichas guardadas aqui entra sem digitar de novo (SPEC 9.3).
+func needs_password(device: String, nick: String) -> bool:
+	if _password == "":
+		return false
+	var base: String = clean_nick(nick)
+	return _same_person(device, base) == null and _held_id(device, base) == ""
+
+
+func password_matches(text: String) -> bool:
+	return _password != "" and text == _password
+
+
+func has_password() -> bool:
+	return _password != ""
 
 
 ## Quantos espectadores contam no teto (SPEC 4.3).
@@ -566,13 +603,20 @@ func humans() -> int:
 	return count
 
 
-## Resumo para a lista de salas.
+## Resumo para a lista de salas (SPEC 9.3): dono, formato, lugares, blinds, se tem
+## senha (locked) e se aceita gente nova agora (open). Nunca a senha.
 func summary() -> Dictionary:
+	var players: int = table.seats.filter(func(seat: Table.Seat) -> bool:
+		return seat.state != Table.OUT).size()
+	var owner: Member = members.get(owner_id)
 	return {
 		"id": id, "name": name, "format": options["format"], "seats": options["seats"],
-		"players": table.seats.filter(func(seat: Table.Seat) -> bool:
-			return seat.state != Table.OUT).size(),
-		"phase": phase, "keep_open": options["keep_open"],
+		"players": players, "phase": phase, "keep_open": options["keep_open"],
+		"owner": owner.nick if owner != null else "",
+		"small_blind": table.small_blind, "big_blind": table.big_blind,
+		"level_minutes": options["level_minutes"], "locked": has_password(),
+		"open": players < int(options["seats"])
+			and (phase == Protocol.LOBBY or (phase == Protocol.PLAYING and options["keep_open"])),
 	}
 
 

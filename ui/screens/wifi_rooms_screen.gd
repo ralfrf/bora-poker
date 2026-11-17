@@ -10,129 +10,11 @@ signal join(ip: String, port: int)
 const Discovery := preload("res://net/discovery.gd")
 const RoomCode := preload("res://net/room_code.gd")
 const WsServer := preload("res://net/ws_server.gd")
-const Dialog := preload("res://ui/widgets/dialog.gd")
+const RoomRow := preload("res://ui/widgets/room_row.gd")
+const EntryPanel := preload("res://ui/widgets/entry_panel.gd")
 
 const ROW_H: float = 58.0
 const MAX_ROWS: int = 4
-const FORMAT_NAMES: Dictionary = {"classic": "Clássico", "tournament": "Torneio"}
-
-
-## Uma sala da lista: nome e, embaixo, formato, ocupação e se já está em partida.
-class RoomRow:
-	extends Button
-
-	var title: String = ""
-	var detail: String = ""
-
-	func _init() -> void:
-		flat = true
-		focus_mode = Control.FOCUS_NONE
-
-	func _draw() -> void:
-		var box: StyleBoxFlat = StyleBoxFlat.new()
-		box.bg_color = Color(get_theme_color("surface", "Tokens"), 0.92 if not is_pressed() else 0.6)
-		box.border_color = get_theme_color("surface_line", "Tokens")
-		box.set_border_width_all(1)
-		box.set_corner_radius_all(12)
-		box.anti_aliasing = true
-		draw_style_box(box, Rect2(Vector2.ZERO, size))
-		var body: int = get_theme_font_size("body", "Tokens")
-		var small: int = get_theme_font_size("small", "Tokens")
-		var width: float = size.x - 32.0
-		draw_string(get_theme_font("strong", "Tokens"), Vector2(16, size.y / 2.0 - 3.0), title,
-			HORIZONTAL_ALIGNMENT_LEFT, width, body, get_theme_color("text", "Tokens"))
-		draw_string(get_theme_font("text", "Tokens"), Vector2(16, size.y / 2.0 + small + 2.0),
-			detail, HORIZONTAL_ALIGNMENT_LEFT, width, small, get_theme_color("text_dim", "Tokens"))
-		draw_string(get_theme_font("strong", "Tokens"), Vector2(size.x - 40.0, size.y / 2.0 + 7.0),
-			"›", HORIZONTAL_ALIGNMENT_LEFT, -1, body + 6, get_theme_color("accent", "Tokens"))
-
-
-## Entrada do código: caixa de texto e dois botões, por cima da tela.
-class CodePanel:
-	extends Control
-
-	signal entered(code: String)
-
-	var field: LineEdit = null
-	var _panel: PanelContainer = null
-	var _error: Label = null
-
-	func _init() -> void:
-		visible = false
-		mouse_filter = Control.MOUSE_FILTER_STOP
-		_panel = PanelContainer.new()
-		_panel.theme_type_variation = "DialogPanel"
-		add_child(_panel)
-		var rows: VBoxContainer = VBoxContainer.new()
-		rows.add_theme_constant_override("separation", 10)
-		_panel.add_child(rows)
-		var title: Label = Label.new()
-		title.theme_type_variation = "TitleLabel"
-		title.text = "Código da sala"
-		rows.add_child(title)
-		var hint: Label = Label.new()
-		hint.theme_type_variation = "DimLabel"
-		hint.text = "Aparece na sala de espera do anfitrião."
-		rows.add_child(hint)
-		field = LineEdit.new()
-		field.placeholder_text = "Ex.: K7 MP"
-		field.max_length = 5
-		field.alignment = HORIZONTAL_ALIGNMENT_CENTER
-		field.context_menu_enabled = false
-		field.custom_minimum_size = Vector2(320, 52)
-		field.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_DEFAULT
-		field.text_submitted.connect(func(text: String) -> void: entered.emit(text))
-		field.text_changed.connect(func(_text: String) -> void: _error.text = "")
-		rows.add_child(field)
-		_error = Label.new()
-		_error.theme_type_variation = "SmallLabel"
-		rows.add_child(_error)
-		var buttons: HBoxContainer = HBoxContainer.new()
-		buttons.alignment = BoxContainer.ALIGNMENT_END
-		buttons.add_theme_constant_override("separation", 10)
-		rows.add_child(buttons)
-		var cancel: Button = Button.new()
-		cancel.text = "Cancelar"
-		cancel.focus_mode = Control.FOCUS_NONE
-		cancel.custom_minimum_size = Vector2(136, 48)
-		cancel.pressed.connect(close)
-		buttons.add_child(cancel)
-		var ok: Button = Button.new()
-		ok.text = "Entrar"
-		ok.theme_type_variation = "PrimaryButton"
-		ok.focus_mode = Control.FOCUS_NONE
-		ok.custom_minimum_size = Vector2(136, 48)
-		ok.pressed.connect(func() -> void: entered.emit(field.text))
-		buttons.add_child(ok)
-
-	func open() -> void:
-		field.text = ""
-		_error.text = ""
-		_error.add_theme_color_override("font_color", get_theme_color("danger", "Tokens"))
-		visible = true
-		_place()
-		field.grab_focus()
-
-	func close() -> void:
-		field.release_focus()
-		visible = false
-
-	func show_error(text: String) -> void:
-		_error.text = text
-
-	func _notification(what: int) -> void:
-		if what == NOTIFICATION_RESIZED and visible:
-			_place()
-
-	func _place() -> void:
-		_panel.reset_size()
-		var panel_size: Vector2 = _panel.get_combined_minimum_size()
-		_panel.size = panel_size
-		# No alto, para o teclado do celular não cobrir.
-		_panel.position = Vector2(((size.x - panel_size.x) / 2.0), maxf(12.0, size.y * 0.06)).round()
-
-	func _draw() -> void:
-		draw_rect(Rect2(Vector2.ZERO, size), Color(get_theme_color("shadow", "Tokens"), 0.6))
 
 
 var _listener: Discovery.Listener = null
@@ -143,7 +25,7 @@ var _hint: Label = null
 var _rows: Array[RoomRow] = []
 var _create: Button = null
 var _code: Button = null
-var _panel: CodePanel = null
+var _panel: EntryPanel = null
 var _rooms: Array = []
 var _notice: String = ""
 
@@ -186,7 +68,7 @@ func _build() -> void:
 	_create = action_button("Criar sala", true)
 	_create.pressed.connect(func() -> void: create.emit())
 	add_child(_create)
-	_panel = CodePanel.new()
+	_panel = EntryPanel.new("Código da sala", "Aparece na sala de espera do anfitrião.", "Ex.: K7 MP", 5)
 	_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_panel.entered.connect(_on_code)
 	add_child(_panel)
@@ -229,7 +111,7 @@ func _refresh() -> void:
 		if row.visible:
 			var room: Dictionary = _rooms[i]
 			row.title = str(room["name"])
-			var parts: Array[String] = [FORMAT_NAMES.get(room["format"], ""),
+			var parts: Array[String] = [RoomRow.FORMAT_NAMES.get(room["format"], ""),
 				"%d de %d lugares" % [int(room["players"]), int(room["seats"])]]
 			if room["phase"] == "playing":
 				# Só assiste quem já estava na sala: sem vaga, não dá para entrar (SPEC 4.3).

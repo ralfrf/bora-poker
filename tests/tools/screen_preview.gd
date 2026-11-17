@@ -3,7 +3,9 @@ extends Control
 ## Nada é gravado no perfil de verdade.
 ##   --screen=profile | profile_edit | home | setup | setup_t | game | showdown |
 ##            rebuy | watching | ranking | history | result | result_t | live | settings |
-##            help | rules | reactions | spectator | paused | held | held_seat
+##            help | rules | reactions | spectator | paused | held | held_seat |
+##            servers | servers_wake | servers_full | servers_advanced | remote_rooms |
+##            remote_password | remote_wake | remote_empty | remote_setup | remote_waiting
 ##   --seed=N  (game e showdown: muda a mesa sorteada)
 
 const Profile := preload("res://ui/app/profile.gd")
@@ -20,6 +22,11 @@ const HelpScreen := preload("res://ui/screens/help_screen.gd")
 const WifiRoomsScreen := preload("res://ui/screens/wifi_rooms_screen.gd")
 const WaitingScreen := preload("res://ui/screens/waiting_screen.gd")
 const WifiGame := preload("res://ui/app/wifi_game.gd")
+const RemoteGame := preload("res://ui/app/remote_game.gd")
+const RemoteHost := preload("res://net/remote_host.gd")
+const LoadProbe := preload("res://net/load_probe.gd")
+const ServersScreen := preload("res://ui/screens/servers_screen.gd")
+const RemoteRoomsScreen := preload("res://ui/screens/remote_rooms_screen.gd")
 
 const FAST: Dictionary = {"hand_gap_ms": 0, "showdown_gap_ms": 0, "bot_min_ms": 0,
 	"bot_max_ms": 0, "bot_evaluations": 120}
@@ -88,8 +95,36 @@ func _ready() -> void:
 			screen = OfflineSetupScreen.new(profile, true)
 		"waiting":
 			screen = WaitingScreen.new(_waiting_game(seats))
+		"servers", "servers_wake", "servers_full", "servers_advanced":
+			# Etapa 5, parte C: servidores com a lotação (sem ir à internet).
+			profile.server_url = ""
+			screen = ServersScreen.new(profile)
+		"remote_rooms", "remote_password", "remote_wake", "remote_empty":
+			screen = RemoteRoomsScreen.new(_remote_list(screen_name), "Servidor 1")
+		"remote_setup":
+			profile.room_password = "2580"
+			profile.online = {"seats": seats, "keep_open": 1}
+			screen = OfflineSetupScreen.new(profile, true, true)
+		"remote_waiting":
+			screen = WaitingScreen.new(_remote_waiting(seats))
 	screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(screen)
+	if screen_name.begins_with("servers"):
+		var probe: LoadProbe = screen.get("probe")
+		match screen_name:
+			"servers_wake":
+				probe.pretend(LoadProbe.State.WAKING)
+			"servers_full":
+				probe.pretend(LoadProbe.State.READY, 100, true)
+			_:
+				probe.pretend(LoadProbe.State.READY, 23)
+		screen.call("_refresh")
+		if screen_name == "servers_advanced":
+			screen.call("_open_advanced")
+	if screen_name == "remote_password":
+		var panel: Control = screen.get("_password_panel")
+		panel.call("open", "1234")
+		panel.call("show_error", "Senha errada; espere 5 s para tentar de novo.")
 	if screen_name == "rooms_list":
 		var now: int = Time.get_ticks_msec() + 100000
 		screen.get("_listener").rooms = {
@@ -101,6 +136,71 @@ func _ready() -> void:
 				"open": false, "seen": now},
 		}
 		screen.call("_refresh")
+
+
+## Sessão à distância de mentira, sem conexão: a lista de salas pronta (ou acordando).
+func _remote_list(kind: String) -> RemoteGame:
+	var game: RemoteGame = RemoteGame.new()
+	if kind == "remote_wake":
+		game.link = RemoteGame.Link.CONNECTING
+		game.set("_started", Time.get_ticks_msec() - 20000)
+		return game
+	game.link = RemoteGame.Link.ONLINE
+	if kind == "remote_empty":
+		return game
+	game.rooms = [
+		{"id": "K7MP", "name": "Sala de Bia", "owner": "Bia", "format": "classic", "seats": 6,
+			"players": 3, "phase": "lobby", "small_blind": 10, "big_blind": 20,
+			"level_minutes": 5, "locked": false, "open": true},
+		{"id": "QX4D", "name": "Sala de Caio", "owner": "Caio", "format": "classic", "seats": 9,
+			"players": 5, "phase": "playing", "small_blind": 25, "big_blind": 50,
+			"level_minutes": 5, "locked": true, "open": true},
+		{"id": "ZR8H", "name": "Sala de Malu", "owner": "Malu", "format": "tournament", "seats": 4,
+			"players": 1, "phase": "lobby", "small_blind": 10, "big_blind": 20,
+			"level_minutes": 8, "locked": true, "open": true},
+		{"id": "W2TN", "name": "Sala de Zeca", "owner": "Nina", "format": "classic", "seats": 2,
+			"players": 1, "phase": "lobby", "small_blind": 5, "big_blind": 10,
+			"level_minutes": 5, "locked": false, "open": true},
+	]
+	game.set("_ever_open", true)
+	return game
+
+
+## Sala de espera à distância de verdade: um servidor de salas aqui mesmo, o dono (com
+## senha) e uma convidada que digitou a senha.
+func _remote_waiting(seats: int) -> RemoteGame:
+	var remote_host: RemoteHost = RemoteHost.new(null, {"room": FAST})
+	remote_host.listen(0, "127.0.0.1")
+	set_meta("remote_host", remote_host)
+	var address: String = "ws://127.0.0.1:%d" % remote_host.ws.port
+	var owner_game: RemoteGame = RemoteGame.new()
+	owner_game.open(address, "Rafa", 4, "aparelho-foto")
+	owner_game.create(OfflineOptions.build_room(OfflineOptions.clean({"seats": seats})), "2580")
+	var guest: RemoteGame = RemoteGame.new()
+	guest.open(address, "Bia", 2, "aparelho-bia")
+	for _i in 400:
+		remote_host.tick()
+		owner_game.update()
+		guest.update()
+		if owner_game.room_id != "" and guest.room_id == "" and not guest.joining() \
+				and guest.link == RemoteGame.Link.ONLINE and guest.get("_greeted"):
+			guest.join_room(owner_game.room_id, "2580")
+		if guest.my_id != "":
+			break
+		OS.delay_msec(5)
+	owner_game.owner("add_bot", {"level": 2})
+	for _i in 20:
+		remote_host.tick()
+		owner_game.update()
+		OS.delay_msec(5)
+	set_meta("guest", guest)
+	return owner_game
+
+
+func _process(_delta: float) -> void:
+	if has_meta("remote_host"):
+		(get_meta("remote_host") as RemoteHost).tick()
+		(get_meta("guest") as RemoteGame).update()
 
 
 ## Sala de espera do anfitrião, com um bot e um convidado de verdade pela rede local.

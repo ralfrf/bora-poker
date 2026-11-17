@@ -8,7 +8,8 @@ const VERSION: int = 2   ## 2: protocolo enxuto (server/wire.gd)
 const HELLO: String = "hello"               ## {v, nick, avatar, device}
 const LIST_ROOMS: String = "list_rooms"     ## {}
 const CREATE_ROOM: String = "create_room"   ## {options}
-const JOIN_ROOM: String = "join_room"       ## {room, spectate} (spectate só na sala de espera)
+const JOIN_ROOM: String = "join_room"       ## {room, spectate, password?} (spectate só na sala de
+                                            ## espera; password: sala com senha, à distância)
 const LEAVE: String = "leave"               ## {}
 const START: String = "start"               ## {} (só o dono)
 const ACT: String = "act"                   ## {seq, action, amount}
@@ -26,7 +27,8 @@ const RESUME_ROOM: String = "resume_room"       ## etapa 5: devolver o resumo da
 
 # Do servidor para o app.
 const WELCOME: String = "welcome"   ## {v, nick}
-const ROOMS: String = "rooms"       ## {rooms: [{id, name, format, seats, players, phase, keep_open}]}
+const ROOMS: String = "rooms"       ## {rooms: [{id, name, format, seats, players, phase, keep_open,
+                                    ##   owner, small_blind, big_blind, level_minutes, locked, open}]}
 const JOINED: String = "joined"     ## {room, you, resumed}: resumed = retomou o lugar de antes
 const STATE: String = "state"       ## {room, table, you, events}: a sala e a mesa vistas por quem recebe.
                                     ## you.return_offer {before, initial, seat, can_initial}: oferta de volta (SPEC 6.2)
@@ -57,6 +59,7 @@ const E_NO_HELLO: String = "no_hello"         ## falta a apresentação
 const E_NO_ROOM: String = "no_room"           ## sala inexistente ou fora de uma sala
 const E_REFUSED: String = "refused"           ## pedido recusado; o texto diz por quê
 const E_FULL: String = "full"              ## servidor sem vagas: o app mostra "Em manutenção" (SPEC 9.3)
+const E_PASSWORD: String = "password"      ## sala com senha: faltou, errou ou espera (wait_ms)
 
 # Fases da sala.
 const LOBBY: String = "lobby"

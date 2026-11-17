@@ -65,6 +65,8 @@ class Peer:
 
 var port: int = 0
 var max_peers: int = MAX_PEERS
+## Calado por mais que isso: caiu. À distância o batimento é mais espaçado (net/remote_host.gd).
+var silence_ms: int = SILENCE_MS
 ## Atrás do repassador do Render o IP de quem conecta vem no X-Forwarded-For.
 var trust_forwarded: bool = false
 ## Responde os pedidos HTTP que não são de jogo:
@@ -214,7 +216,7 @@ func _poll_peer(peer: Peer, now: int) -> void:
 	if not _read_frames(peer, now):
 		_forget(peer)
 		return
-	if peer.open and now - peer.last_ms > SILENCE_MS:
+	if peer.open and now - peer.last_ms > silence_ms:
 		drop(peer.id)
 
 

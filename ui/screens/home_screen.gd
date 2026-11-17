@@ -1,6 +1,6 @@
 extends "res://ui/screens/screen.gd"
-## Início (SPEC 11.1): os três modos, com o último usado já escolhido. À distância
-## ainda aparece como "Em breve". No alto da coluna, o seu perfil e, logo
+## Início (SPEC 11.1): os três modos, com o último usado já escolhido.
+## No alto da coluna, o seu perfil e, logo
 ## abaixo, Configurações e Ajuda (a Loja só aparece quando for liberada).
 
 signal play(mode: String)
@@ -17,7 +17,7 @@ const AvatarButton := preload("res://ui/widgets/avatar_button.gd")
 const ShopScreen := preload("res://ui/screens/shop_screen.gd")
 
 ## Modos prontos nesta versão.
-const READY: Array[String] = [Profile.MODE_OFFLINE, Profile.MODE_WIFI]
+const READY: Array[String] = [Profile.MODE_OFFLINE, Profile.MODE_WIFI, Profile.MODE_ONLINE]
 
 
 ## Botão do perfil: avatar, apelido e "Editar".

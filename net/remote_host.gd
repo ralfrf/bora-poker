@@ -20,6 +20,9 @@ const MAX_CONNECTIONS: int = 800
 const RATE: int = 20               ## mensagens por segundo por conexão
 const WATCHER_CAP: int = 3         ## SPEC 4.3
 const EMPTY_CLOSE_MS: int = 600000 ## SPEC 6.5
+## Batimento à distância: o app manda "ping" a cada 5 s (ui/app/remote_game.gd), não a
+## cada 2 s como no Wi-Fi, para gastar menos banda; calado por 16 s, caiu.
+const SILENCE_MS: int = 16000
 ## Fração de um núcleo do plano gratuito do Render, quando o contêiner não informa a
 ## própria cota em número (a variável CPU_SHARE pode trocar).
 const DEFAULT_CPU_SHARE: float = 0.1
@@ -44,6 +47,7 @@ func _init(clock: Clock = null, config: Dictionary = {}) -> void:
 	ws.max_peers = int(config.get("max_connections", MAX_CONNECTIONS))
 	ws.trust_forwarded = true
 	ws.http_handler = _http
+	ws.silence_ms = SILENCE_MS
 	var room_config: Dictionary = {"watcher_cap": WATCHER_CAP, "empty_close_ms": EMPTY_CLOSE_MS}
 	room_config.merge(config.get("room", {}), true)
 	server = Server.new(ws, _clock, {
@@ -53,6 +57,7 @@ func _init(clock: Clock = null, config: Dictionary = {}) -> void:
 		"cpu_reader": _cpu_used_us,
 		"cpu_share": _share,
 		"room": room_config,
+		"list_open_only": true,
 	}, config.get("seed_source", Callable()))
 
 

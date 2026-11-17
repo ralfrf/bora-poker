@@ -1,5 +1,5 @@
 extends "res://ui/screens/screen.gd"
-## Sala de espera do Wi-Fi (SPEC 11.1, item 5): quem já entrou, os bots, as opções e o
+## Sala de espera do Wi-Fi e à distância (SPEC 11.1, item 5): quem já entrou, os bots, as opções e o
 ## código da sala. O dono põe e tira bots, expulsa e começa a partida; os outros
 ## esperam. Cada um troca o próprio avatar tocando no seu lugar. Quando a partida
 ## começa, a mesa abre (sinal started).
@@ -10,11 +10,10 @@ signal finished(notice: String)
 ## Trocou o avatar (quem abriu a tela guarda no perfil).
 signal avatar_changed(avatar: int)
 
-const WifiGame := preload("res://ui/app/wifi_game.gd")
+const GameSession := preload("res://ui/app/game_session.gd")
 const Dialog := preload("res://ui/widgets/dialog.gd")
 const Paint := preload("res://ui/widgets/paint.gd")
 const AvatarButton := preload("res://ui/widgets/avatar_button.gd")
-const RoomCode := preload("res://net/room_code.gd")
 const Roster := preload("res://bots/roster.gd")
 const Money := preload("res://engine/money.gd")
 const Protocol := preload("res://server/protocol.gd")
@@ -65,7 +64,7 @@ class SeatChip:
 			detail, HORIZONTAL_ALIGNMENT_LEFT, width, small, get_theme_color("text_dim", "Tokens"))
 
 
-var _game: WifiGame = null
+var _game: GameSession = null
 var _back: Button = null
 var _title: Label = null
 var _summary: Label = null
@@ -89,7 +88,7 @@ var _last_status: String = ""
 
 
 ## game: a sessão já aberta (anfitrião) ou conectando (convidado).
-func _init(game: WifiGame) -> void:
+func _init(game: GameSession) -> void:
 	_game = game
 
 
@@ -169,6 +168,12 @@ func _process(delta: float) -> void:
 	super(delta)
 	if _done:
 		return
+	# O state da partida em andamento pode ter chegado junto com o "joined", ainda na
+	# lista de salas (à distância, sala aberta em partida).
+	if _game.last_state.get("room", {}).get("phase") == Protocol.PLAYING:
+		_done = true
+		started.emit()
+		return
 	var changed: bool = false
 	for message: Dictionary in _game.update():
 		match message.get("t"):
@@ -179,7 +184,7 @@ func _process(delta: float) -> void:
 					started.emit()
 					return
 			Protocol.CLOSED:
-				_finish("O anfitrião fechou a sala.")
+				_finish(_game.closed_notice())
 				return
 			Protocol.LEFT:
 				if message.get("reason") == Protocol.R_KICKED:
@@ -189,9 +194,9 @@ func _process(delta: float) -> void:
 					_finish(_game.failure())
 					return
 			Protocol.ERROR:
-				if _game.link != WifiGame.Link.FAILED:
+				if not _game.failed():
 					_status.text = str(message.get("text", ""))
-	if _game.link == WifiGame.Link.FAILED:
+	if _game.failed():
 		_finish(_game.error_text)
 		return
 	if _game.confirm_seat and not _asking_seat:
@@ -222,15 +227,9 @@ func _refresh() -> void:
 	var seats: int = int(options.get("seats", 0))
 	_title.text = str(room.get("name", "Entrando na sala…"))
 	_summary.text = _options_text(options) if not options.is_empty() else ""
-	var ip: String = _game.host_ip
-	_code.text = RoomCode.pretty(RoomCode.encode(ip)) if ip != "" else ""
+	_code.text = _game.room_code()
 	_code_title.visible = _code.text != ""
-	if _game.is_host:
-		_hint.text = "Os amigos precisam estar na mesma rede Wi-Fi. A sala aparece sozinha " \
-			+ "para eles; se não aparecer, passe o código. Se a rede bloquear, ligue o ponto " \
-			+ "de acesso deste celular e peça para eles se conectarem nele."
-	else:
-		_hint.text = ""
+	_hint.text = _game.waiting_hint()
 	var by_seat: Dictionary = {}
 	var watchers: Array[String] = []
 	for member: Dictionary in room.get("members", []):
@@ -383,7 +382,7 @@ func _on_seat(index: int) -> void:
 
 func _ask_leave() -> void:
 	_pending_kick = ""
-	if _game.is_host and _game.link != WifiGame.Link.FAILED:
+	if _game.is_host and not _game.failed():
 		var question: Array[String] = _game.leave_question()
 		if question[2] == "Sair":
 			_dialog.ask("Sair da sala?", "A sala continua no celular de outro jogador.",
