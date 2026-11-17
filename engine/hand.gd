@@ -526,14 +526,10 @@ func _settle(showdown: bool, events: Array[Dictionary]) -> void:
 	var pots: Array[Dictionary] = Pots.distribute(Pots.build(_pot_entries()), scores, order)
 
 	var won: Dictionary = {}
-	var contested: Dictionary = {}   # quem ganhou um pote que tinha disputa
 	for pot in pots:
-		var eligible: Array = pot["eligible"]
 		for share: Dictionary in pot["shares"]:
 			var seat: int = share["seat"]
 			won[seat] = int(won.get(seat, 0)) + int(share["amount"])
-			if eligible.size() > 1:
-				contested[seat] = true
 
 	var payouts: Array[Dictionary] = []
 	var nets: Array[Dictionary] = []
@@ -546,12 +542,13 @@ func _settle(showdown: bool, events: Array[Dictionary]) -> void:
 			payouts.append({"seat": player.seat, "amount": amount})
 		nets.append({"seat": player.seat, "amount": player.stack - player.start_stack})
 
-	# Mostram as cartas: quem ganha algum pote disputado e, em showdown de all-in, todos
-	# os envolvidos. Mãos perdedoras não aparecem. Se todos desistiram, ninguém mostra.
+	# Mostram as cartas, como no poker de verdade: no showdown, todos que chegaram até o
+	# fim sem desistir, ganhando ou perdendo (pedido do dono, 17/11/2026). Quem desistiu
+	# não mostra; se todos os outros desistiram, não há showdown e ninguém mostra.
 	var shown: Array[Dictionary] = []
 	if showdown:
 		for player in players:
-			if player.folded or not (revealed or contested.has(player.seat)):
+			if player.folded:
 				continue
 			var seven: Array[int] = _seven(player)
 			var score: int = scores[player.seat]

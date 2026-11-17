@@ -158,10 +158,11 @@ func test_deal_order_no_burn_and_showdown() -> void:
 	assert_true(result["showdown"])
 	assert_eq(result["payouts"], [{"seat": 0, "amount": 60}])
 	var shown: Array = result["shown"]
-	assert_eq(shown.size(), 1, "mão perdedora não é mostrada")
-	assert_eq(shown[0]["seat"], 0)
-	assert_eq(shown[0]["name"], "Par")
-	assert_eq(Cards.list_to_text(shown[0]["best"]), "As Ah Jc 9h 7d")
+	assert_eq(shown.size(), 3, "no showdown, todos que chegaram ao fim mostram (também quem perdeu)")
+	var winner: Array = shown.filter(func(entry: Dictionary) -> bool: return entry["seat"] == 0)
+	assert_eq(winner.size(), 1)
+	assert_eq(winner[0]["name"], "Par")
+	assert_eq(Cards.list_to_text(winner[0]["best"]), "As Ah Jc 9h 7d")
 
 
 func test_start_events_do_not_carry_cards() -> void:
@@ -633,3 +634,22 @@ func test_current_pots_during_the_hand() -> void:
 	assert_eq(pots[1]["amount"], 400)
 	assert_eq(pots[1]["eligible"], [1, 2])
 	assert_eq(hand.committed(), 700)
+
+
+func test_folded_players_never_show() -> void:
+	var deck: Array[int] = _rigged(0, ["As Ah", "Ks Kh", "Qs Qh"], BOARD)
+	var hand: Hand = _start([1000, 1000, 1000], 0, deck)
+	_do(hand, 0, Hand.FOLD)   # o par de ases desiste antes do flop
+	_check_down(hand)
+	var seats: Array = hand.result["shown"].map(func(entry: Dictionary) -> int: return entry["seat"])
+	seats.sort()
+	assert_eq(seats, [1, 2], "quem chegou ao fim mostra, ganhando ou perdendo; quem desistiu, não")
+
+
+func test_nobody_shows_when_everyone_else_folds() -> void:
+	var hand: Hand = _start([1000, 1000, 1000], 0)
+	_do(hand, 0, Hand.FOLD)
+	_do(hand, 1, Hand.FOLD)
+	assert_true(hand.finished)
+	assert_false(hand.result["showdown"])
+	assert_eq(hand.result["shown"], [], "sem showdown, ninguém mostra")
