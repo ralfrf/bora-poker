@@ -19,6 +19,7 @@ const Clock := preload("res://server/clock.gd")
 const Wire := preload("res://server/wire.gd")
 const Bot := preload("res://bots/bot.gd")
 const Roster := preload("res://bots/roster.gd")
+const NickFilter := preload("res://server/nick_filter.gd")
 
 const MIN_SEATS: int = 2
 const DEFAULT_SEATS: int = 4
@@ -215,14 +216,23 @@ static func is_password(text: String) -> bool:
 
 
 ## Apelido como vai aparecer: sem espaços nas pontas, sem caracteres de controle e com
-## tamanho limitado. O filtro de palavrões vem na etapa 6 (SPEC 4.4).
+## tamanho limitado. Apelido barrado pelo filtro (palavrão, ódio) vira "Jogador" (SPEC 4.4).
 static func clean_nick(raw: String) -> String:
+	var text: String = _trim_nick(raw)
+	return DEFAULT_NICK if text == "" or NickFilter.blocked(text) else text
+
+
+## O apelido é barrado pelo filtro: a tela do perfil avisa e o servidor troca por "Jogador".
+static func nick_blocked(raw: String) -> bool:
+	return NickFilter.blocked(_trim_nick(raw))
+
+
+static func _trim_nick(raw: String) -> String:
 	var text: String = ""
 	for i in raw.length():
 		var code: int = raw.unicode_at(i)
 		text += " " if code < 32 or code == 127 else raw[i]
-	text = text.strip_edges().left(MAX_NICK).strip_edges()
-	return text if text != "" else DEFAULT_NICK
+	return text.strip_edges().left(MAX_NICK).strip_edges()
 
 
 ## room_options: as opções já conferidas por normalize_options.

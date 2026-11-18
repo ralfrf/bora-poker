@@ -38,8 +38,10 @@ func load_file(path: String = PATH) -> void:
 	var file: ConfigFile = ConfigFile.new()
 	if file.load(path) == OK:
 		var raw_nick: Variant = file.get_value("perfil", "apelido", "")
+		# Apelido barrado salvo por uma versão antiga: pede outro na abertura.
 		nick = Room.clean_nick(raw_nick) if typeof(raw_nick) == TYPE_STRING \
-			and (raw_nick as String).strip_edges() != "" else ""
+			and (raw_nick as String).strip_edges() != "" \
+			and not Room.nick_blocked(raw_nick) else ""
 		var raw_avatar: Variant = file.get_value("perfil", "avatar", 0)
 		avatar = clampi(raw_avatar, 0, Room.AVATARS - 1) if typeof(raw_avatar) == TYPE_INT else 0
 		var raw_mode: Variant = file.get_value("perfil", "ultimo_modo", MODE_WIFI)
@@ -84,7 +86,7 @@ func is_new() -> bool:
 
 
 func set_nick(text: String) -> void:
-	nick = Room.clean_nick(text) if text.strip_edges() != "" else ""
+	nick = Room.clean_nick(text) if text.strip_edges() != "" and not Room.nick_blocked(text) else ""
 
 
 ## Põe as configurações deste perfil em vigor no app.

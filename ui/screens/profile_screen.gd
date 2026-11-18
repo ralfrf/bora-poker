@@ -14,6 +14,8 @@ const Logo := preload("res://ui/widgets/logo.gd")
 const AvatarPaint := preload("res://ui/widgets/paint.gd")
 
 const AVATAR_D: float = 40.0
+const HINT: String = "Até %d letras. Sem cadastro: fica só neste celular."
+const HINT_REFUSED: String = "Esse apelido não pode ser usado. Escolha outro."
 
 var profile: Profile = null
 var first: bool = true
@@ -56,7 +58,7 @@ func _build() -> void:
 	add_child(_field)
 	_hint = Label.new()
 	_hint.theme_type_variation = "SmallLabel"
-	_hint.text = "Até %d letras. Sem cadastro: fica só neste celular." % Room.MAX_NICK
+	_hint.text = HINT % Room.MAX_NICK
 	add_child(_hint)
 	_avatar_label = Label.new()
 	_avatar_label.theme_type_variation = "SmallLabel"
@@ -121,13 +123,19 @@ func _layout() -> void:
 
 func _refresh() -> void:
 	var nick: String = _field.text.strip_edges()
-	_confirm.disabled = nick == ""
+	var refused: bool = Room.nick_blocked(nick)
+	_confirm.disabled = nick == "" or refused
+	_hint.text = HINT_REFUSED if refused else HINT % Room.MAX_NICK
+	if refused:
+		_hint.add_theme_color_override("font_color", get_theme_color("danger", "Tokens"))
+	else:
+		_hint.remove_theme_color_override("font_color")
 	_preview.data = {"nick": nick if nick != "" else "Seu apelido", "avatar": _avatar,
 		"stack": 2000}
 
 
 func _on_confirm() -> void:
-	if _field.text.strip_edges() == "":
+	if _field.text.strip_edges() == "" or Room.nick_blocked(_field.text):
 		return
 	profile.set_nick(_field.text)
 	profile.avatar = _avatar
