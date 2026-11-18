@@ -8,6 +8,7 @@ extends RefCounted
 
 const Room := preload("res://server/room.gd")
 const Prefs := preload("res://ui/app/prefs.gd")
+const Paint := preload("res://ui/widgets/paint.gd")
 
 const PATH: String = "user://perfil.cfg"
 const MODE_OFFLINE: String = "offline"
@@ -25,6 +26,8 @@ var device: String = ""
 var sound: bool = true
 var vibration: bool = true
 var mute_reactions: bool = false
+## Avatares exclusivos escolhidos com as compras da Loja (ao reinstalar, escolhe de novo).
+var store_avatars: Array[int] = []
 
 var _path: String = PATH
 
@@ -53,6 +56,7 @@ func load_file(path: String = PATH) -> void:
 		sound = _flag(file.get_value("config", "sons", true), true)
 		vibration = _flag(file.get_value("config", "vibracao", true), true)
 		mute_reactions = _flag(file.get_value("config", "silenciar_reacoes", false), false)
+		store_avatars = _exclusives(file.get_value("loja", "avatares", []))
 	if device.length() < 16:
 		device = Crypto.new().generate_random_bytes(12).hex_encode()
 	apply()
@@ -70,6 +74,7 @@ func save() -> bool:
 	file.set_value("config", "sons", sound)
 	file.set_value("config", "vibracao", vibration)
 	file.set_value("config", "silenciar_reacoes", mute_reactions)
+	file.set_value("loja", "avatares", store_avatars)
 	return file.save(_path) == OK
 
 
@@ -87,6 +92,17 @@ func apply() -> void:
 	Prefs.sound = sound
 	Prefs.vibration = vibration
 	Prefs.mute_reactions = mute_reactions
+
+
+## Só avatares exclusivos que existem, sem repetir.
+static func _exclusives(raw: Variant) -> Array[int]:
+	var out: Array[int] = []
+	if typeof(raw) == TYPE_ARRAY:
+		for value: Variant in raw:
+			if typeof(value) == TYPE_INT and value >= Paint.FREE_AVATARS \
+					and value < Paint.AVATAR_COUNT and not out.has(value):
+				out.append(value)
+	return out
 
 
 static func _flag(raw: Variant, fallback: bool) -> bool:

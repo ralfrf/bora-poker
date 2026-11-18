@@ -140,7 +140,7 @@ func _show_home() -> void:
 	screen.play.connect(_on_mode)
 	screen.open_settings.connect(func() -> void: _show_simple(SettingsScreen.new(profile)))
 	screen.open_help.connect(func() -> void: _show_simple(HelpScreen.new()))
-	screen.open_shop.connect(func() -> void: _show_simple(ShopScreen.new()))
+	screen.open_shop.connect(func() -> void: _show_simple(ShopScreen.new(profile)))
 	_show(screen)
 
 

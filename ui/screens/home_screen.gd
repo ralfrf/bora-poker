@@ -1,7 +1,7 @@
 extends "res://ui/screens/screen.gd"
 ## Início (SPEC 11.1): os três modos, com o último usado já escolhido.
 ## No alto da coluna, o seu perfil e, logo
-## abaixo, Configurações e Ajuda (a Loja só aparece quando for liberada).
+## abaixo, Configurações, Ajuda e Loja.
 
 signal play(mode: String)
 signal edit_profile

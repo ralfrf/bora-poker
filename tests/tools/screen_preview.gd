@@ -10,6 +10,9 @@ extends Control
 ##   --felt=rubi  (a mesa escolhida: telas de criar, sala de espera e partida offline)
 ##   --avatar=N  (o avatar do perfil de exemplo)  --picker  (remote_waiting: abre a escolha de avatar)
 ##   --ads  (rebuy: a oferta de retorno com anúncio, como no Wi-Fi e à distância)
+##   shop: a Loja. --owned=mesa_rubi,avatares_2 (compras de exemplo, feitas hoje) e
+##         --prices (preços de exemplo, como se a loja do celular respondesse);
+##         --picker com uma compra de avatares abre a escolha deles
 
 const Profile := preload("res://ui/app/profile.gd")
 const OfflineGame := preload("res://ui/app/offline_game.gd")
@@ -30,6 +33,8 @@ const RemoteHost := preload("res://net/remote_host.gd")
 const LoadProbe := preload("res://net/load_probe.gd")
 const ServersScreen := preload("res://ui/screens/servers_screen.gd")
 const RemoteRoomsScreen := preload("res://ui/screens/remote_rooms_screen.gd")
+const ShopScreen := preload("res://ui/screens/shop_screen.gd")
+const Catalog := preload("res://ui/app/store_catalog.gd")
 
 const FAST: Dictionary = {"hand_gap_ms": 0, "showdown_gap_ms": 0, "bot_min_ms": 0,
 	"bot_max_ms": 0, "bot_evaluations": 120}
@@ -118,9 +123,13 @@ func _ready() -> void:
 			screen = OfflineSetupScreen.new(profile, true, true)
 		"remote_waiting":
 			screen = WaitingScreen.new(_remote_waiting(seats))
+		"shop":
+			screen = ShopScreen.new(profile, _shop_sample())
 	screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(screen)
-	if picker and screen.get("_picker") != null:
+	if picker and screen_name == "shop":
+		screen.call_deferred("_open_claim")
+	elif picker and screen.get("_picker") != null:
 		screen.get("_picker").call_deferred("open", avatar)
 	if screen_name.begins_with("servers"):
 		var probe: LoadProbe = screen.get("probe")
@@ -210,6 +219,33 @@ func _remote_waiting(seats: int) -> RemoteGame:
 		OS.delay_msec(5)
 	set_meta("guest", guest)
 	return owner_game
+
+
+## Compras e preços de exemplo para a Loja (nada vai à loja do celular).
+func _shop_sample() -> Dictionary:
+	var purchases: Array = []
+	var now: int = int(Time.get_unix_time_from_system())
+	var prices: Dictionary = {}
+	for arg: String in OS.get_cmdline_user_args():
+		if arg.begins_with("--owned="):
+			for id: String in arg.get_slice("=", 1).split(",", false):
+				purchases.append({"id": id, "time": now})
+		elif arg == "--prices":
+			for id: String in Catalog.all_products():
+				var tier_price: String = "R$ 4,99"
+				if id == "avatares_2":
+					tier_price = "R$ 0,99"
+				elif id.ends_with("_2meses"):
+					tier_price = "R$ 7,99"
+				elif id.begins_with("completo_"):
+					tier_price = "R$ 9,99"
+				elif id == Catalog.RENEWAL:
+					tier_price = "R$ 5,99"
+				prices[id] = tier_price
+	var sample: Dictionary = {"purchases": purchases}
+	if not prices.is_empty():
+		sample["prices"] = prices
+	return sample
 
 
 func _process(_delta: float) -> void:

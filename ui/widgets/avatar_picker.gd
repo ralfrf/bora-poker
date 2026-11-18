@@ -2,6 +2,9 @@ extends Control
 ## Escolha de avatar por cima da tela (sala de espera): os 10 grátis numa fileira e os
 ## exclusivos embaixo, com o aviso do Beta.
 ## Tocar num escolhe e fecha; tocar fora fecha sem trocar.
+##
+## Só exclusivos (Loja): para escolher os avatares que vêm com a compra; os já
+## escolhidos aparecem marcados e não se tocam.
 
 signal picked(avatar: int)
 
@@ -12,10 +15,13 @@ const DIAMETER: float = 36.0
 const PER_ROW: int = 10
 
 var _panel: PanelContainer = null
+var _title: Label = null
 var _buttons: Array[AvatarButton] = []
+var _exclusive_only: bool = false
 
 
-func _init() -> void:
+func _init(exclusive_only: bool = false) -> void:
+	_exclusive_only = exclusive_only
 	visible = false
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	_panel = PanelContainer.new()
@@ -24,19 +30,22 @@ func _init() -> void:
 	var rows: VBoxContainer = VBoxContainer.new()
 	rows.add_theme_constant_override("separation", 10)
 	_panel.add_child(rows)
-	var title: Label = Label.new()
-	title.theme_type_variation = "TitleLabel"
-	title.text = "Seu avatar"
-	rows.add_child(title)
-	var free: GridContainer = _grid(rows)
-	var hint: Label = Label.new()
-	hint.theme_type_variation = "SmallLabel"
-	hint.text = "Exclusivos: grátis no Beta. Depois, só na Loja."
-	hint.modulate = Color(1, 1, 1, 0.7)
-	rows.add_child(hint)
+	_title = Label.new()
+	_title.theme_type_variation = "TitleLabel"
+	_title.text = "Seu avatar"
+	rows.add_child(_title)
+	var free: GridContainer = null if exclusive_only else _grid(rows)
+	if not exclusive_only:
+		var hint: Label = Label.new()
+		hint.theme_type_variation = "SmallLabel"
+		hint.text = "Exclusivos: grátis no Beta. Depois, só na Loja."
+		hint.modulate = Color(1, 1, 1, 0.7)
+		rows.add_child(hint)
 	var exclusive: GridContainer = _grid(rows)
-	var group: ButtonGroup = ButtonGroup.new()
+	var group: ButtonGroup = null if exclusive_only else ButtonGroup.new()
 	for index: int in Paint.AVATAR_COUNT:
+		if exclusive_only and index < Paint.FREE_AVATARS:
+			continue
 		var grid: GridContainer = free if index < Paint.FREE_AVATARS else exclusive
 		var button: AvatarButton = AvatarButton.new(index, DIAMETER)
 		button.button_group = group
@@ -57,8 +66,19 @@ func _grid(rows: VBoxContainer) -> GridContainer:
 
 
 func open(current: int) -> void:
-	for i in _buttons.size():
-		_buttons[i].set_pressed_no_signal(i == current)
+	for button: AvatarButton in _buttons:
+		button.set_pressed_no_signal(button.avatar == current)
+	visible = true
+	_place()
+
+
+## Só exclusivos: abre com os já escolhidos marcados e travados.
+func open_claim(chosen: Array[int], left: int) -> void:
+	_title.text = "Escolha um avatar exclusivo (falta 1)" if left == 1 \
+		else "Escolha um avatar exclusivo (faltam %d)" % left
+	for button: AvatarButton in _buttons:
+		button.set_pressed_no_signal(chosen.has(button.avatar))
+		button.disabled = chosen.has(button.avatar)
 	visible = true
 	_place()
 
