@@ -54,6 +54,7 @@ func _ready() -> void:
 		_offer_seen = false
 		_check_offer(_game.last_state.get("you", {})))
 	_table.reactions_enabled = _game.has_reactions()
+	_table.rebuy_ads = _game.has_rebuy_ads()
 	add_child(_table)
 	_ranking = RankingSheet.new()
 	_ranking.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -151,7 +152,7 @@ func _check_offer(you: Dictionary) -> void:
 		_dialog.ask("Voltar para a mesa",
 			"Suas fichas guardadas: %s. Ou volte com as fichas iniciais: %s%s. Veja um anúncio e volte." % [
 				Money.format(before), Money.format(initial),
-				" (conta como recompra)" if initial > before else ""],
+				" (conta como um retorno)" if initial > before else ""],
 			["Com as minhas", "Com as iniciais"])
 	else:
 		_dialog.dismissable = true
@@ -207,10 +208,13 @@ func _ask_leave() -> void:
 	_dialog.ask(question[0], question[1], [question[2], "Continuar jogando"])
 
 
-## Recompra: primeiro o anúncio, depois o pedido ao servidor. Quem prefere assistir não
-## responde nada: a oferta fica aberta, sem prazo, e a mesa mostra "Voltar ao jogo".
+## Retorno com as fichas iniciais: no Wi-Fi e à distância, primeiro o anúncio, depois o
+## pedido ao servidor; no offline, direto. Quem prefere assistir não responde nada: a
+## oferta fica aberta, sem prazo, e a mesa mostra "Voltar ao jogo".
 func _on_rebuy(accept: bool) -> void:
-	if accept:
+	if accept and not _game.has_rebuy_ads():
+		_game.rebuy(true)
+	elif accept:
 		Ads.rewarded(func(watched: bool) -> void:
 			if watched and not _done:
 				_game.rebuy(true))

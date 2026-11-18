@@ -87,7 +87,7 @@ func _build() -> void:
 	_minutes.changed.connect(_choose.bind("minutes"))
 	_turn = ChoiceRow.new("Tempo por jogada", OfflineOptions.TURN_LABELS, choice["turn"])
 	_turn.changed.connect(_choose.bind("turn"))
-	_rebuys = ChoiceRow.new("Recompras", OfflineOptions.REBUY_LABELS, choice["rebuys"])
+	_rebuys = ChoiceRow.new("Retornos (quando acabam as fichas)", OfflineOptions.REBUY_LABELS, choice["rebuys"])
 	_rebuys.changed.connect(_choose.bind("rebuys"))
 	_keep = ChoiceRow.new("Manter sala aberta", OfflineOptions.KEEP_OPEN_LABELS,
 		choice["keep_open"])

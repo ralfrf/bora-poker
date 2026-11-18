@@ -719,5 +719,9 @@ func _flush(ms: int) -> void:
 		OS.delay_msec(10)
 
 
+func has_rebuy_ads() -> bool:
+	return true
+
+
 func has_reactions() -> bool:
 	return true

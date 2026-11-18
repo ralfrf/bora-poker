@@ -147,6 +147,12 @@ func has_reactions() -> bool:
 	return false
 
 
+## O retorno com as fichas iniciais pede um anúncio antes (Wi-Fi e à distância). No
+## offline, contra os bots, não há anúncio (pedido do dono, 17/11/2026).
+func has_rebuy_ads() -> bool:
+	return false
+
+
 ## Mostra as cartas depois de levar o pote sem showdown.
 func show_cards() -> void:
 	send({"t": Protocol.SHOW})

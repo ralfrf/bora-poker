@@ -344,8 +344,8 @@ static func _options_text(options: Dictionary) -> String:
 		parts.append("blinds %s/%s" % [Money.format(int(options.get("small_blind", 0))),
 			Money.format(int(options.get("big_blind", 0)))])
 		var limit: int = int(options.get("rebuy_limit", -1))
-		parts.append("recompra sem limite" if limit < 0 else ("sem recompra" if limit == 0
-			else "%d %s" % [limit, "recompra" if limit == 1 else "recompras"]))
+		parts.append("retornos sem limite" if limit < 0 else ("sem retorno" if limit == 0
+			else "%d %s" % [limit, "retorno" if limit == 1 else "retornos"]))
 		if options.get("keep_open", false):
 			parts.append("sala aberta")
 	parts.append(TURN_TEXT.get(int(options.get("turn_seconds", 30)), ""))

@@ -11,8 +11,8 @@ const RULES: Array = [
 	["A mão", "Cada um recebe 2 cartas fechadas. Na mesa abrem 5 cartas para todos: o flop (3), o turn (1) e o river (1). Vale a melhor combinação de 5 cartas entre as suas 2 e as 5 da mesa."],
 	["As apostas", "Antes das cartas, dois jogadores põem os blinds (SB e BB). Na sua vez, você pode Desistir, Passar (se ninguém apostou), Pagar, Apostar ou Aumentar. All-in é apostar todas as suas fichas. O botão anda um lugar a cada mão."],
 	["O showdown", "Se mais de um chegar ao fim, as cartas são mostradas e o pote vai para a melhor mão. Mãos iguais dividem o pote. Os naipes não desempatam."],
-	["Clássico", "Os blinds não mudam. Quem perde todas as fichas pode recomprar, se a mesa permitir, ou continuar assistindo. No fim, o placar mostra o saldo de cada um."],
-	["Torneio", "Todos começam com as mesmas fichas e os blinds sobem com o tempo. Não há recompra: quem zera sai. Vence quem ficar com todas as fichas."],
+	["Clássico", "Os blinds não mudam. Quem perde todas as fichas pode retornar com as fichas iniciais, se a mesa permitir, ou continuar assistindo. No fim, o placar mostra o saldo de cada um."],
+	["Torneio", "Todos começam com as mesmas fichas e os blinds sobem com o tempo. Não há retorno: quem zera sai. Vence quem ficar com todas as fichas."],
 	["Fichas", "As fichas são só do jogo: não valem dinheiro, não se compram e não se vendem."],
 ]
 

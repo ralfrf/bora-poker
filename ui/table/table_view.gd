@@ -116,6 +116,8 @@ var _rebuy_left_ms: int = -1
 ## Escolheu continuar assistindo em vez de recomprar (até a oferta acabar).
 var _watching: bool = false
 ## Liga o botão de reações (Wi-Fi e à distância; no offline não há com quem reagir).
+## O retorno com as fichas iniciais tem anúncio antes (Wi-Fi e à distância; não no offline).
+var rebuy_ads: bool = true
 var reactions_enabled: bool = false
 ## A mesa espera o anfitrião voltar: os relógios ficam parados (SPEC 6.4).
 var frozen: bool = false
@@ -541,7 +543,7 @@ func _show_column(table: Dictionary, you: Dictionary, me: Dictionary,
 	match kind:
 		"rebuy":
 			var stack: int = int(_state.get("room", {}).get("options", {}).get("starting_stack", 0))
-			_prompt_main.set_content("Recomprar", stack)
+			_prompt_main.set_content("Ver anúncio e retornar" if rebuy_ads else "Retornar", -1)
 			_prompt_alt.set_content("Continuar assistindo", -1)
 			_prompt_alt.visible = true
 			_refresh_rebuy_text()
@@ -557,7 +559,7 @@ func _show_column(table: Dictionary, you: Dictionary, me: Dictionary,
 		"sit":
 			# Quem assiste e pode sentar (SPEC 4.3): sala aberta ou quem já jogou aqui.
 			_prompt_text.text = "Você está assistindo. Há um lugar livre." + (
-				" Sentar conta como recompra: antes, um anúncio." if you.get("sit_rebuy", false) else "")
+				" Sentar conta como um retorno: antes, um anúncio." if you.get("sit_rebuy", false) else "")
 			_prompt_main.set_content("Sentar", -1)
 			_prompt_alt.visible = false
 		"return":
@@ -577,7 +579,8 @@ func _show_column(table: Dictionary, you: Dictionary, me: Dictionary,
 func _refresh_rebuy_text() -> void:
 	if _prompt_kind != "rebuy":
 		return
-	var text: String = "Suas fichas acabaram. Veja um anúncio e volte com as fichas iniciais."
+	# "Retornar", não "recomprar": as fichas são do jogo e não se compram (pedido do dono).
+	var text: String = ("Suas fichas acabaram. Assista a um anúncio e volte à mesa com as fichas iniciais, de graça." 		if rebuy_ads else "Suas fichas acabaram. Toque em Retornar para voltar à mesa com as fichas iniciais.") 		+ " Cada retorno soma 1 no contador do seu avatar."
 	if _rebuy_left_ms >= 0:
 		text += " %d s para decidir." % ceili(_rebuy_left_ms / 1000.0)
 	_prompt_text.text = text

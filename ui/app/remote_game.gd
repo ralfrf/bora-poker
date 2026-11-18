@@ -313,6 +313,10 @@ func leave_question() -> Array[String]:
 		"Sair"]
 
 
+func has_rebuy_ads() -> bool:
+	return true
+
+
 func has_reactions() -> bool:
 	return true
 

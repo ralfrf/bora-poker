@@ -9,6 +9,7 @@ extends Control
 ##   --seed=N  (game e showdown: muda a mesa sorteada)
 ##   --felt=rubi  (a mesa escolhida: telas de criar, sala de espera e partida offline)
 ##   --avatar=N  (o avatar do perfil de exemplo)  --picker  (remote_waiting: abre a escolha de avatar)
+##   --ads  (rebuy: a oferta de retorno com anúncio, como no Wi-Fi e à distância)
 
 const Profile := preload("res://ui/app/profile.gd")
 const OfflineGame := preload("res://ui/app/offline_game.gd")
@@ -302,6 +303,8 @@ func _game(kind: String, seats: int, watching: bool = false, ranking: bool = fal
 			target["room"]["paused"] = true
 			target["room"]["phase"] = "playing"
 		table_view.set("reactions_enabled", extra == "reactions")
+		# --ads: a oferta de retorno como no Wi-Fi e à distância (com anúncio).
+		table_view.set("rebuy_ads", OS.get_cmdline_user_args().has("--ads"))
 		table_view.call("render", target)
 		if extra == "reactions":
 			screen.open_reactions()
