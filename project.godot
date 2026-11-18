@@ -16,6 +16,8 @@ run/main_scene="res://ui/app/main.tscn"
 run/low_processor_mode=true
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://ui/icon/icon.png"
+boot_splash/bg_color=Color(0.019607844, 0.02745098, 0.050980393, 1)
+boot_splash/image="res://ui/icon/splash.png"
 
 [display]
 
