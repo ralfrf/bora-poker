@@ -12,6 +12,8 @@ const RemoteHost := preload("res://net/remote_host.gd")
 const LoadProbe := preload("res://net/load_probe.gd")
 const PasswordGuard := preload("res://server/password_guard.gd")
 const RemoteGame := preload("res://ui/app/remote_game.gd")
+const ServersScreen := preload("res://ui/screens/servers_screen.gd")
+const Profile := preload("res://ui/app/profile.gd")
 
 const FAST: Dictionary = {"hand_gap_ms": 0, "showdown_gap_ms": 0, "bot_min_ms": 0, "bot_max_ms": 0,
 	"bot_evaluations": 120}
@@ -503,3 +505,20 @@ func test_list_shows_room_to_return_even_when_closed_to_new_people() -> void:
 			joined = message
 	assert_eq(joined.get("you"), bia_id, "volta para o mesmo lugar")
 	assert_true(joined.get("resumed", false))
+
+
+## Tela de servidores: link "Assistir a um anúncio" depois do aviso; sem anúncio de
+## verdade ainda, avisa que chega em breve e não deixa tocar de novo.
+func test_servers_screen_ad_link() -> void:
+	var profile: Profile = Profile.new()
+	profile.load_file("user://perfil_teste_servidores.cfg")
+	var screen: ServersScreen = ServersScreen.new(profile)
+	screen._build()
+	assert_true(RemoteGame.wake_tip().contains("assista a um anúncio"), "o aviso cita o anúncio")
+	assert_eq(screen._watch.text, "Assistir a um anúncio")
+	assert_false(screen._watch.disabled)
+	screen.watch_ad()
+	assert_eq(screen._watch.text, "Os anúncios chegam em breve. Obrigado!")
+	assert_true(screen._watch.disabled)
+	screen.probe.close()
+	screen.free()

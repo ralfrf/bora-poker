@@ -18,8 +18,11 @@ const RemoteGame := preload("res://ui/app/remote_game.gd")
 const RoomRow := preload("res://ui/widgets/room_row.gd")
 const EntryPanel := preload("res://ui/widgets/entry_panel.gd")
 const AdBox := preload("res://ui/widgets/ad_box.gd")
+const Ads := preload("res://ui/app/ads.gd")
 
 const ROW_H: float = 62.0
+## Tamanho da letra do link do anúncio.
+const LINK_SIZE: int = 10
 const NAMES: Array[String] = ["Servidor 1", "Servidor 2"]
 
 var profile: Profile = null
@@ -32,6 +35,8 @@ var _status: Label = null
 var _rows: Array[RoomRow] = []
 var _hint: Label = null
 var _ad: AdBox = null
+## Link "Assistir a um anúncio", logo depois do aviso (pedido do dono, 18/11/2026).
+var _watch: LinkButton = null
 var _advanced: Button = null
 var _enter: Button = null
 var _panel: EntryPanel = null
@@ -71,6 +76,20 @@ func _build() -> void:
 	_hint.theme_type_variation = "SmallLabel"
 	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	add_child(_hint)
+	_watch = LinkButton.new()
+	_watch.text = "Assistir a um anúncio"
+	_watch.underline = LinkButton.UNDERLINE_MODE_ALWAYS
+	_watch.focus_mode = Control.FOCUS_NONE
+	var link_color: Color = get_theme_color("accent", "Tokens")
+	for state: String in ["font_color", "font_hover_color", "font_pressed_color",
+			"font_hover_pressed_color", "font_focus_color"]:
+		_watch.add_theme_color_override(state, link_color)
+	_watch.add_theme_color_override("font_disabled_color", get_theme_color("text_dim", "Tokens"))
+	# Bem pequeno, mas legível (pedido do dono, 18/11/2026): menor que o aviso (12).
+	_watch.add_theme_font_override("font", get_theme_font("text", "Tokens"))
+	_watch.add_theme_font_size_override("font_size", LINK_SIZE)
+	_watch.pressed.connect(watch_ad)
+	add_child(_watch)
 	_ad = AdBox.new()
 	add_child(_ad)
 	_advanced = action_button("Avançado", false)
@@ -167,10 +186,33 @@ func _layout() -> void:
 	var ad_size: Vector2 = AdBox.SIZE
 	place(_ad, Rect2(b.position.x, b.end.y - ad_size.y, ad_size.x, ad_size.y))
 	var hint_left: float = b.position.x + ad_size.x + 14.0
-	place(_hint, Rect2(hint_left, hint_top, maxf(40.0, b.end.x - hint_left),
-		maxf(20.0, b.end.y - hint_top)))
+	var hint_w: float = maxf(40.0, b.end.x - hint_left)
+	place(_hint, Rect2(hint_left, hint_top, hint_w, maxf(20.0, b.end.y - hint_top)))
+	# O link vai logo depois do texto do aviso (a altura do texto depende da largura).
+	var text_h: float = _hint.get_line_count() * (_hint.get_line_height()
+		+ _hint.get_theme_constant("line_spacing"))
+	var link_size: Vector2 = _watch.get_combined_minimum_size()
+	# Com um aviso a mais (conexão que caiu), o link não passa da beira da tela.
+	var link_top: float = minf(hint_top + text_h + 2.0, size.y - link_size.y - 2.0)
+	place(_watch, Rect2(hint_left, link_top, minf(link_size.x, hint_w), link_size.y))
 	place(_enter, Rect2(col.position.x, col.end.y - BUTTON_H, col.size.x, BUTTON_H))
 	place(_advanced, Rect2(col.position.x, col.end.y - BUTTON_H * 2.0 - 10.0, col.size.x, BUTTON_H))
+
+
+## Abre o anúncio que mais paga (o vídeo com recompensa; SPEC 12) e agradece no fim.
+## Sem anúncio de verdade ainda (sem SDK), avisa que chega em breve.
+func watch_ad() -> void:
+	_watch.disabled = true
+	if not Ads.available():
+		_watch.text = "Os anúncios chegam em breve. Obrigado!"
+		_layout()
+		return
+	Ads.rewarded(func(watched: bool) -> void:
+		if not is_instance_valid(_watch):
+			return
+		_watch.disabled = watched
+		_watch.text = "Obrigado pela ajuda!" if watched else "Assistir a um anúncio"
+		_layout())
 
 
 func _on_row(index: int) -> void:

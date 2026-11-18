@@ -326,4 +326,4 @@ func has_reactions() -> bool:
 static func wake_tip() -> String:
 	return "O Bora Poker está em desenvolvimento, melhorando a cada versão. " \
 		+ "Pode levar alguns segundos para o servidor aparecer. Enquanto isso, se quiser, " \
-		+ "assista a um anúncio e ajude a melhorar os nossos servidores."
+		+ "assista a um anúncio e nos ajude a melhorar."
