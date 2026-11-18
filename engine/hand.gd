@@ -210,19 +210,21 @@ func apply_action(seat: int, action: String, amount: int = 0) -> Dictionary:
 	return _ok(events)
 
 
-## Quem levou o pote porque todos desistiram pode mostrar as cartas, se quiser (como nos
-## sites de poker; pedido do dono, 17/11/2026). Só depois do fim da mão, uma vez.
+## Mostrar as cartas por escolha, depois do fim da mão (como nos sites de poker; pedidos
+## do dono, 17/11/2026): quem levou o pote porque todos desistiram e quem chegou ao
+## showdown e teve a mão perdedora escondida. Uma vez só; quem desistiu não mostra.
 ## Devolve {ok, error, events}; o evento "show" leva as cartas para todos.
 func show_cards(seat: int) -> Dictionary:
-	if not finished or cancelled or bool(result.get("showdown", false)):
-		return _error("só quem levou o pote sem showdown mostra")
-	var payouts: Array = result.get("payouts", [])
-	if payouts.size() != 1 or int(payouts[0]["seat"]) != seat:
-		return _error("só quem levou o pote sem showdown mostra")
+	var player: Player = player_at(seat)
+	if not finished or cancelled or player == null or player.folded:
+		return _error("não há cartas para mostrar")
+	if not bool(result.get("showdown", false)):
+		var payouts: Array = result.get("payouts", [])
+		if payouts.size() != 1 or int(payouts[0]["seat"]) != seat:
+			return _error("não há cartas para mostrar")
 	for entry: Dictionary in result.get("shown", []):
 		if int(entry["seat"]) == seat:
 			return _error("as cartas já foram mostradas")
-	var player: Player = player_at(seat)
 	var shown: Dictionary = {"seat": seat, "cards": player.cards.duplicate(), "score": 0,
 		"name": "", "best": []}
 	# Com o flop na mesa já há uma mão de 5 cartas para dar nome.

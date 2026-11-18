@@ -566,8 +566,9 @@ func _show_column(table: Dictionary, you: Dictionary, me: Dictionary,
 			_prompt_main.set_content("Voltar à mesa", -1)
 			_prompt_alt.visible = false
 		"show":
-			# Como nos sites: quem levou sem showdown pode mostrar, se quiser.
-			_prompt_text.text = "Todos desistiram. Você levou o pote."
+			# Como nos sites: quem levou sem showdown, ou perdeu e teve a mão escondida,
+			# pode mostrar, se quiser.
+			_prompt_text.text = "Sua mão ficou escondida." 				if table.get("result", {}).get("showdown", false) 				else "Todos desistiram. Você levou o pote."
 			_prompt_main.set_content("Mostrar cartas", -1)
 			_prompt_alt.visible = false
 	_place_prompt()
@@ -603,13 +604,21 @@ func _on_prompt(main: bool) -> void:
 			show_requested.emit()
 
 
-## Você levou o pote porque todos desistiram e ainda não mostrou as cartas.
+## Você pode mostrar as cartas por escolha: levou o pote porque todos desistiram, ou
+## chegou ao showdown e a sua mão perdedora ficou escondida. Ainda não mostrou.
 func _can_show(table: Dictionary) -> bool:
 	if _my_seat < 0 or table.get("live", false):
 		return false
 	var result: Dictionary = table.get("result", {})
+	if result.is_empty() or result.get("cancelled", false):
+		return false
+	var mine: Array = table.get("seats", []).filter(
+		func(entry: Dictionary) -> bool: return int(entry.get("seat", -1)) == _my_seat)
+	if mine.is_empty() or not mine[0].get("in_hand", false) or mine[0].get("folded", false):
+		return false
 	var payouts: Array = result.get("payouts", [])
-	if result.get("showdown", false) or result.get("cancelled", false) or payouts.size() != 1 			or int(payouts[0].get("seat", -1)) != _my_seat:
+	if not result.get("showdown", false) and (payouts.size() != 1
+			or int(payouts[0].get("seat", -1)) != _my_seat):
 		return false
 	for entry: Dictionary in result.get("shown", []):
 		if int(entry.get("seat", -1)) == _my_seat:

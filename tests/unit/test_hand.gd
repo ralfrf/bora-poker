@@ -716,3 +716,25 @@ func test_aggressor_survives_save_and_old_states_load() -> void:
 	assert_eq(old.aggressor, -1)
 	saved["aggressor"] = 7
 	assert_false(Hand.new().load_dict(saved), "quem apostou tem de estar na mão")
+
+
+func test_hidden_loser_may_show_at_showdown() -> void:
+	# Mesma mão do teste da ordem: KK abre, QQ esconde, AA ganha. QQ pode mostrar depois.
+	var deck: Array[int] = _rigged(0, ["As Ah", "Ks Kh", "Qs Qh"], BOARD)
+	var hand: Hand = _start([1000, 1000, 1000], 0, deck)
+	_check_down(hand)
+	assert_false(hand.show_cards(0)["ok"], "quem já mostrou não mostra de novo")
+	var response: Dictionary = hand.show_cards(2)
+	assert_true(response["ok"], str(response["error"]))
+	assert_eq(response["events"][0]["name"], "Par", "com a mesa completa, a mão tem nome")
+	var seats: Array = hand.result["shown"].map(func(entry: Dictionary) -> int: return entry["seat"])
+	assert_eq(seats, [1, 0, 2])
+	assert_false(hand.show_cards(2)["ok"], "uma vez só")
+
+
+func test_folded_player_cannot_show() -> void:
+	var deck: Array[int] = _rigged(0, ["As Ah", "Ks Kh", "Qs Qh"], BOARD)
+	var hand: Hand = _start([1000, 1000, 1000], 0, deck)
+	_do(hand, 0, Hand.FOLD)
+	_check_down(hand)
+	assert_false(hand.show_cards(0)["ok"], "quem desistiu não mostra")
