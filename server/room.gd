@@ -484,10 +484,13 @@ func add_bot(level: int) -> String:
 	if seat < 0:
 		return "não há lugar livre"
 	var taken: Array = []
+	var faces: Array = []
 	for other: Member in members.values():
 		taken.append(other.nick)
+		faces.append(other.avatar)
 	var pick: Dictionary = Roster.pick(_rng, taken)
-	var member: Member = _new_member(pick["name"], _rng.randi_range(0, AVATARS - 1), true)
+	var member: Member = _new_member(pick["name"],
+		Roster.avatar_for(_rng, pick["gender"], faces), true)
 	member.level = level
 	member.style = pick["style"] if str(_config["bot_style"]) == "" else str(_config["bot_style"])
 	member.bot = Bot.new(level, member.style, _rng.randi(), int(_config["bot_evaluations"]))

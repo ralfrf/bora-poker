@@ -86,6 +86,31 @@ func test_roster_names_and_styles() -> void:
 	assert_false(Roster.is_level(0) or Roster.is_level("2"))
 
 
+## Bots com nome de homem usam os retratos de homens, e os de mulher os de mulheres;
+## na mesma mesa, nenhum rosto se repete.
+func test_bot_avatars_follow_the_name() -> void:
+	var gender_of: Dictionary = {}
+	for entry: Array in Roster.NAMES:
+		assert_true(entry[2] == "m" or entry[2] == "f", "nome sem grupo: " + entry[0])
+		gender_of[entry[0]] = entry[2]
+	var photos: Array[int] = Roster.MEN_AVATARS + Roster.WOMEN_AVATARS
+	assert_eq(photos.size(), Room.AVATARS - 10, "os grupos cobrem todos os retratos")
+	for avatar: int in photos:
+		assert_true(avatar >= 10 and avatar < Room.AVATARS)
+		assert_eq(photos.count(avatar), 1, "retrato em dois grupos")
+	for seed_value: int in [1, 2, 3, 4, 5]:
+		var room: Room = _bot_table([1, 2, 3, 1, 2, 3, 1, 2, 3], "", Table.CLASSIC, seed_value, 0)
+		var faces: Array = []
+		for member: Variant in room.members.values():
+			var group: Array[int] = Roster.WOMEN_AVATARS if gender_of[member.nick] == "f" 				else Roster.MEN_AVATARS
+			assert_true(group.has(member.avatar), "%s com retrato do outro grupo" % member.nick)
+			assert_false(faces.has(member.avatar), "rosto repetido na mesa")
+			faces.append(member.avatar)
+	# Com o grupo todo em uso, repete um rosto do mesmo grupo.
+	var rng: RandomNumberGenerator = _rng(3)
+	assert_true(Roster.MEN_AVATARS.has(Roster.avatar_for(rng, "m", Roster.MEN_AVATARS)))
+
+
 ## Mesa só de bots, pela sala de verdade: nenhuma jogada pode ser recusada.
 func _bot_table(levels: Array, style: String, format: String, seed_value: int, hands: int) -> Room:
 	var normalized: Dictionary = Room.normalize_options(

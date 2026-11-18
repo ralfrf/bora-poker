@@ -20,16 +20,23 @@ const STYLES: Dictionary = {
 	"bluffer": {"label": "Blefador", "loose": 1.12, "aggr": 1.1, "bluff": 1.9},
 }
 
+## Nome, estilo e "m" (homem) ou "f" (mulher), que escolhe o grupo de retratos.
 const NAMES: Array = [
-	["Zeca", "bluffer"], ["Tonho", "aggressive"], ["Cida", "cautious"],
-	["Bia", "aggressive"], ["Juca", "cautious"], ["Malu", "bluffer"],
-	["Chico", "cautious"], ["Nina", "bluffer"], ["Tião", "aggressive"],
-	["Duda", "cautious"], ["Beto", "bluffer"], ["Lia", "aggressive"],
-	["Guto", "aggressive"], ["Tati", "cautious"], ["Neco", "bluffer"],
-	["Carol", "aggressive"], ["Dudu", "cautious"], ["Vivi", "bluffer"],
-	["Caio", "cautious"], ["Paulinha", "bluffer"], ["Léo", "aggressive"],
-	["Jô", "cautious"], ["Rafa", "bluffer"], ["Lu", "aggressive"],
+	["Zeca", "bluffer", "m"], ["Tonho", "aggressive", "m"], ["Cida", "cautious", "f"],
+	["Bia", "aggressive", "f"], ["Juca", "cautious", "m"], ["Malu", "bluffer", "f"],
+	["Chico", "cautious", "m"], ["Nina", "bluffer", "f"], ["Tião", "aggressive", "m"],
+	["Duda", "cautious", "f"], ["Beto", "bluffer", "m"], ["Lia", "aggressive", "f"],
+	["Guto", "aggressive", "m"], ["Tati", "cautious", "f"], ["Neco", "bluffer", "m"],
+	["Carol", "aggressive", "f"], ["Dudu", "cautious", "m"], ["Vivi", "bluffer", "f"],
+	["Caio", "cautious", "m"], ["Paulinha", "bluffer", "f"], ["Léo", "aggressive", "m"],
+	["Jô", "cautious", "f"], ["Rafa", "bluffer", "m"], ["Lu", "aggressive", "f"],
 ]
+
+## Os retratos dos bots, na ordem da grade de ui/avatars/fotos.png (os avatares 0 a 9
+## são os grátis em vetor): 10 a 18 são homens (01 a 09 na arte) e 19 a 28 mulheres
+## (11 a 20 na arte).
+const MEN_AVATARS: Array[int] = [10, 11, 12, 13, 14, 15, 16, 17, 18]
+const WOMEN_AVATARS: Array[int] = [19, 20, 21, 22, 23, 24, 25, 26, 27, 28]
 
 
 static func is_level(level: Variant) -> bool:
@@ -40,7 +47,7 @@ static func traits(style: String) -> Dictionary:
 	return STYLES.get(style, STYLES[NEUTRAL])
 
 
-## Sorteia um nome que ainda não está na sala. Devolve {name, style}.
+## Sorteia um nome que ainda não está na sala. Devolve {name, style, gender}.
 static func pick(rng: RandomNumberGenerator, taken: Array) -> Dictionary:
 	var free: Array = []
 	for entry: Array in NAMES:
@@ -49,4 +56,17 @@ static func pick(rng: RandomNumberGenerator, taken: Array) -> Dictionary:
 	if free.is_empty():
 		free = NAMES
 	var chosen: Array = free[rng.randi_range(0, free.size() - 1)]
-	return {"name": chosen[0], "style": chosen[1]}
+	return {"name": chosen[0], "style": chosen[1], "gender": chosen[2]}
+
+
+## Sorteia um retrato do grupo do nome ("m" ou "f") que ninguém na sala está usando;
+## com todos em uso, repete um do grupo. Sempre um só sorteio no gerador.
+static func avatar_for(rng: RandomNumberGenerator, gender: String, taken: Array) -> int:
+	var group: Array[int] = WOMEN_AVATARS if gender == "f" else MEN_AVATARS
+	var free: Array[int] = []
+	for avatar: int in group:
+		if not taken.has(avatar):
+			free.append(avatar)
+	if free.is_empty():
+		free = group
+	return free[rng.randi_range(0, free.size() - 1)]
