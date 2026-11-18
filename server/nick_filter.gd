@@ -50,7 +50,7 @@ const ANYWHERE: Array[String] = [
 	# Nazismo e supremacia branca.
 	"hitler", "neonazi", "feminazi", "siegheil", "suastica", "swastika", "hakenkreuz",
 	"auschwitz", "goebbels", "himmler", "mengele", "whitepower", "whitepride",
-	"kukluxklan", "terceiroreich",
+	"kukluxklan", "terceiroreich", "fascis", "facist", "facism", "supremacist", "racist",
 	# Racismo e antissemitismo.
 	"nigger", "nigga", "negroimund", "pretoimund", "negrosujo", "pretosujo",
 	"macacoimund", "chingchong", "wetback", "raghead", "judeusujo", "matajudeu",
