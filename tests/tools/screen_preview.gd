@@ -232,16 +232,7 @@ func _shop_sample() -> Dictionary:
 				purchases.append({"id": id, "time": now})
 		elif arg == "--prices":
 			for id: String in Catalog.all_products():
-				var tier_price: String = "R$ 4,99"
-				if id == "avatares_2":
-					tier_price = "R$ 0,99"
-				elif id.ends_with("_2meses"):
-					tier_price = "R$ 7,99"
-				elif id.begins_with("completo_"):
-					tier_price = "R$ 9,99"
-				elif id == Catalog.RENEWAL:
-					tier_price = "R$ 5,99"
-				prices[id] = tier_price
+				prices[id] = Catalog.reference_price(id)
 	var sample: Dictionary = {"purchases": purchases}
 	if not prices.is_empty():
 		sample["prices"] = prices

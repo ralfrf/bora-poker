@@ -2,6 +2,7 @@ extends Button
 ## Cartão de um nível da Loja (SPEC 12): o desenho do que vem (os avatares, a mesa
 ## escolhida ou os dois), o nome, até três linhas curtas e, embaixo, a pílula com o
 ## preço que a loja do celular informou (ou "Em breve", "Comprado", "Você já tem").
+## Com "Em breve", o preço de referência aparece logo acima da pílula.
 ## Só se toca quando dá para comprar.
 
 const Paint := preload("res://ui/widgets/paint.gd")
@@ -10,7 +11,7 @@ const Tables := preload("res://ui/theme/tables.gd")
 const T: String = "Tokens"
 
 const SHRINK: float = 0.3
-const PICTURE_H: float = 78.0
+const PICTURE_H: float = 58.0
 const PILL_H: float = 30.0
 
 var title: String = ""
@@ -18,6 +19,8 @@ var lines: Array[String] = []
 ## Texto da pílula de baixo; highlight: dourada (à venda) ou apagada.
 var pill: String = ""
 var highlight: bool = false
+## Preço mostrado acima da pílula ("" sem preço; usado quando a pílula diz outra coisa).
+var price: String = ""
 ## Selo no canto (ex.: "Mais completo"); "" sem selo.
 var badge: String = ""
 ## Avatares desenhados no alto; mesa: o nome da mesa ("" sem mesa).
@@ -59,7 +62,7 @@ func refresh() -> void:
 
 
 func _picture() -> Rect2:
-	return Rect2(10, 24 if badge != "" else 10, size.x - 20.0, PICTURE_H)
+	return Rect2(10, 22 if badge != "" else 10, size.x - 20.0, PICTURE_H)
 
 
 func _fit() -> void:
@@ -92,7 +95,7 @@ func _draw() -> void:
 
 	var pic: Rect2 = _picture()
 	if not avatars.is_empty():
-		var d: float = 40.0 if table == "" else 30.0
+		var d: float = 40.0 if table == "" else 28.0
 		var colors: Array[Color] = Paint.avatar_colors(self)
 		var count: int = avatars.size()
 		var step: float = d * 0.78
@@ -122,19 +125,22 @@ func _draw() -> void:
 	var strong: Font = get_theme_font("strong", T)
 	var body_size: int = get_theme_font_size("body", T)
 	var small: int = get_theme_font_size("small", T)
-	var y: float = pic.end.y + 10.0 + body_size
+	var y: float = pic.end.y + 8.0 + body_size
 	draw_string(display, Vector2(0, y), title, HORIZONTAL_ALIGNMENT_CENTER, size.x,
 		_fit_size(display, title, size.x - 12.0, body_size, small), text_color)
-	y += 6.0
+	y += 4.0
 	for line: String in lines:
 		for row: String in _wrap(body, line, size.x - 16.0, small):
-			y += small + 4.0
-			if y > size.y - PILL_H - 12.0:
+			y += small + 3.0
+			if y > size.y - PILL_H - (36.0 if price != "" else 12.0):
 				break
 			draw_string(body, Vector2(8, y), row, HORIZONTAL_ALIGNMENT_CENTER, size.x - 16.0,
 				small, dim)
 
 	var pill_rect: Rect2 = Rect2(10, size.y - PILL_H - 10.0, size.x - 20.0, PILL_H)
+	if price != "":
+		draw_string(strong, Vector2(0, pill_rect.position.y - 8.0), price,
+			HORIZONTAL_ALIGNMENT_CENTER, size.x, body_size, accent)
 	var fill: StyleBoxFlat = StyleBoxFlat.new()
 	fill.bg_color = accent if highlight else Color(get_theme_color("surface_line", T), 0.7)
 	fill.set_corner_radius_all(int(PILL_H / 2.0))

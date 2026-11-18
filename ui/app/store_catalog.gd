@@ -9,7 +9,10 @@ extends RefCounted
 ## ao reinstalar. Os 2 avatares são escolhidos depois da compra e, ao reinstalar,
 ## escolhidos de novo.
 ##
-## Os preços nunca ficam aqui: vêm da loja do celular, já com o "R$" (exceção só da Loja).
+## O preço que vale é o que a loja do celular informar, já com o "R$" (exceção só da
+## Loja). Enquanto as compras estão fechadas, a Loja mostra os preços de referência
+## abaixo ao lado do "Em breve" (pedido do dono, 18/11/2026); com a loja respondendo, o
+## preço dela substitui estes.
 
 const Paint := preload("res://ui/widgets/paint.gd")
 const Tables := preload("res://ui/theme/tables.gd")
@@ -30,6 +33,15 @@ const TIERS: Array[String] = [TIER_AVATARS, TIER_TABLE, TIER_TABLE_ADS, TIER_FUL
 
 ## A renovação do tempo sem anúncios (5,99, 6 meses), assinatura pré-paga.
 const RENEWAL: String = "sem_anuncios_6meses"
+
+## Preços de referência (SPEC 12), só para mostrar enquanto a loja não responde.
+const REFERENCE_PRICES: Dictionary = {
+	TIER_AVATARS: "R$ 0,99",
+	TIER_TABLE: "R$ 4,99",
+	TIER_TABLE_ADS: "R$ 7,99",
+	TIER_FULL: "R$ 9,99",
+	RENEWAL: "R$ 5,99",
+}
 
 ## O que cada nível dá: avatares à escolha, se vem mesa e meses sem anúncios.
 const GRANTS: Dictionary = {
@@ -65,18 +77,35 @@ static func all_products() -> Array[String]:
 	return ids
 
 
-## O que um produto dá: {"avatars", "table" (nome da mesa ou ""), "months"}. Produto
-## desconhecido não dá nada.
-static func grant(id: String) -> Dictionary:
-	if id == RENEWAL:
-		return {"avatars": 0, "table": "", "months": 6}
-	if id == product_id(TIER_AVATARS):
-		return _grant_of(TIER_AVATARS, "")
+## O nível de um produto (a renovação responde RENEWAL; desconhecido, "").
+static func tier_of(id: String) -> String:
+	if id == RENEWAL or id == product_id(TIER_AVATARS):
+		return RENEWAL if id == RENEWAL else TIER_AVATARS
 	for table: String in TABLES:
 		for tier: String in [TIER_TABLE, TIER_TABLE_ADS, TIER_FULL]:
 			if id == product_id(tier, table):
-				return _grant_of(tier, table)
-	return {"avatars": 0, "table": "", "months": 0}
+				return tier
+	return ""
+
+
+## O preço de referência de um produto ("" se desconhecido).
+static func reference_price(id: String) -> String:
+	return str(REFERENCE_PRICES.get(tier_of(id), ""))
+
+
+## O que um produto dá: {"avatars", "table" (nome da mesa ou ""), "months"}. Produto
+## desconhecido não dá nada.
+static func grant(id: String) -> Dictionary:
+	var tier: String = tier_of(id)
+	if tier == RENEWAL:
+		return {"avatars": 0, "table": "", "months": 6}
+	if tier == "":
+		return {"avatars": 0, "table": "", "months": 0}
+	var table: String = ""
+	for name: String in TABLES:
+		if id == product_id(tier, name):
+			table = name
+	return _grant_of(tier, table)
 
 
 static func _grant_of(tier: String, table: String) -> Dictionary:

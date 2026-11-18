@@ -5,8 +5,9 @@ extends "res://ui/screens/screen.gd"
 ## a renovação de 6 meses. A mesa das compras se escolhe na coluna da direita e vale para
 ## os três cartões com mesa (um produto por mesa na loja).
 ##
-## Os preços vêm da loja do celular (ui/app/purchases.gd), nunca daqui. Sem loja (hoje,
-## sem plugin), os cartões mostram "Em breve" e o aviso do Beta. Nunca fichas.
+## Os preços vêm da loja do celular (ui/app/purchases.gd). Sem loja (hoje, sem plugin),
+## os cartões mostram "Em breve" com o preço de referência acima e o aviso do Beta.
+## Nunca fichas.
 
 signal back
 
@@ -150,13 +151,13 @@ func _refresh() -> void:
 		_table_buttons[i].set_pressed_no_signal(Catalog.TABLES[i] == _table)
 	var table_name: String = str(Tables.skin(_table)["name"])
 	_fill(Catalog.TIER_AVATARS, "2 avatares",
-		["Exclusivos, à sua escolha", "Ficam seus para sempre"], "", SAMPLE_AVATARS)
+		["Exclusivos, à sua escolha", "Para sempre"], "", SAMPLE_AVATARS)
 	_fill(Catalog.TIER_TABLE, "Mesa %s" % table_name,
-		["Fica sua para sempre", "Todos da sala a veem"], _table, [])
+		["Para sempre", "Todos da sala a veem"], _table, [])
 	_fill(Catalog.TIER_TABLE_ADS, "Mesa + 2 meses",
 		["Mesa %s para sempre" % table_name, "2 meses sem anúncios"], _table, [])
 	_fill(Catalog.TIER_FULL, "Completo",
-		["Mesa %s e 2 avatares" % table_name, "6 meses sem anúncios", "Não renova sozinho"],
+		["Mesa %s + 2 avatares" % table_name, "6 meses sem anúncios", "Não renova sozinho"],
 		_table, SAMPLE_AVATARS)
 	(_cards[Catalog.TIER_FULL] as StoreCard).badge = "Mais completo"
 	var renewal: StoreCard = _cards[Catalog.RENEWAL]
@@ -196,6 +197,7 @@ func _set_pill(card: StoreCard, id: String, state: String) -> void:
 		card.pill = str(_prices[id])
 	else:
 		card.pill = "Em breve"
+	card.price = Catalog.reference_price(id) if card.pill == "Em breve" else ""
 	card.highlight = claim or (state in ["buy", "has_table"] and _open() and _prices.has(id))
 	card.disabled = not card.highlight or _busy
 	card.refresh()

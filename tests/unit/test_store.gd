@@ -35,6 +35,12 @@ func test_store_grants() -> void:
 	assert_eq(Catalog.grant("completo_perola"), {"avatars": 2, "table": "perola", "months": 6})
 	assert_eq(Catalog.grant(Catalog.RENEWAL), {"avatars": 0, "table": "", "months": 6})
 	assert_eq(Catalog.grant("fichas_1000"), {"avatars": 0, "table": "", "months": 0}, "não existe")
+	assert_eq(Catalog.reference_price("avatares_2"), "R$ 0,99")
+	assert_eq(Catalog.reference_price("mesa_perola"), "R$ 4,99")
+	assert_eq(Catalog.reference_price("mesa_safira_2meses"), "R$ 7,99")
+	assert_eq(Catalog.reference_price("completo_rubi"), "R$ 9,99")
+	assert_eq(Catalog.reference_price(Catalog.RENEWAL), "R$ 5,99")
+	assert_eq(Catalog.reference_price("fichas_1000"), "")
 
 
 func test_store_entitlements_sum_and_ignore_junk() -> void:
@@ -156,6 +162,7 @@ func test_store_screen_cards() -> void:
 	for key: String in Catalog.TIERS:
 		var card: Variant = closed._cards[key]
 		assert_eq(card.pill, "Em breve", key)
+		assert_true(card.price.begins_with("R$ "), "preço de referência à vista: " + key)
 		assert_true(card.disabled, "travado: " + key)
 	assert_false(closed._cards[Catalog.RENEWAL].visible, "sem prazo, sem renovação")
 	closed.free()
