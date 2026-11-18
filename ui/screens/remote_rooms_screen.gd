@@ -151,7 +151,7 @@ func _refresh() -> void:
 	var tips: Array[String] = []
 	if _notice != "":
 		tips.append(_notice)
-	tips.append(RemoteGame.wake_tip())
+	# Sem o aviso fixo dos servidores: a lista fica limpa (pedido do dono, 18/11/2026).
 	if _game.link == RemoteGame.Link.ONLINE and _rooms.is_empty():
 		tips.append("Crie uma sala e passe o código aos amigos, ou espere a sala deles " \
 			+ "aparecer aqui.")

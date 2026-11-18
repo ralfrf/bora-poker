@@ -320,7 +320,7 @@ func has_reactions() -> bool:
 	return true
 
 
-## Aviso fixo das telas de servidores e de salas, com o servidor acordando ou não. A
+## Aviso fixo da tela de servidores, com o servidor acordando ou não. A
 ## frase do anúncio aparece mesmo antes de haver anúncio de verdade (pedido do dono,
 ## 18/11/2026).
 static func wake_tip() -> String:
