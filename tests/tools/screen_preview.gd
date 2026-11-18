@@ -156,7 +156,7 @@ func _ready() -> void:
 		var now: int = Time.get_ticks_msec() + 100000
 		screen.get("_listener").rooms = {
 			"192.168.0.23": {"ip": "192.168.0.23", "port": 47820, "name": "Sala de Bia",
-				"format": "classic", "seats": 6, "players": 3, "phase": "lobby", "open": true,
+				"format": "classic", "seats": 6, "players": 3, "phase": "lobby", "open": true, "felt": "rubi",
 				"seen": now},
 			"192.168.0.31": {"ip": "192.168.0.31", "port": 47820, "name": "Sala de Caio",
 				"format": "tournament", "seats": 4, "players": 4, "phase": "playing",
@@ -178,16 +178,16 @@ func _remote_list(kind: String) -> RemoteGame:
 	game.rooms = [
 		{"id": "K7MP", "name": "Sala de Bia", "owner": "Bia", "format": "classic", "seats": 6,
 			"players": 3, "phase": "lobby", "small_blind": 10, "big_blind": 20,
-			"level_minutes": 5, "locked": false, "open": true},
+			"level_minutes": 5, "locked": false, "open": true, "felt": "salao"},
 		{"id": "QX4D", "name": "Sala de Caio", "owner": "Caio", "format": "classic", "seats": 9,
 			"players": 5, "phase": "playing", "small_blind": 25, "big_blind": 50,
-			"level_minutes": 5, "locked": true, "open": true},
+			"level_minutes": 5, "locked": true, "open": true, "felt": "rubi"},
 		{"id": "ZR8H", "name": "Sala de Malu", "owner": "Malu", "format": "tournament", "seats": 4,
 			"players": 1, "phase": "lobby", "small_blind": 10, "big_blind": 20,
-			"level_minutes": 8, "locked": true, "open": true},
+			"level_minutes": 8, "locked": true, "open": true, "felt": "safira"},
 		{"id": "W2TN", "name": "Sala de Zeca", "owner": "Nina", "format": "classic", "seats": 2,
 			"players": 1, "phase": "lobby", "small_blind": 5, "big_blind": 10,
-			"level_minutes": 5, "locked": false, "open": true},
+			"level_minutes": 5, "locked": false, "open": true, "felt": "perola"},
 	]
 	game.set("_ever_open", true)
 	return game

@@ -597,7 +597,7 @@ func _fail(text: String) -> void:
 		_ws.close()
 
 
-## O anúncio da sala na rede (SPEC 9.2): nome, formato, lugares, ocupação e se aceita
+## O anúncio da sala na rede (SPEC 9.2): nome, formato, lugares, ocupação, mesa e se aceita
 ## gente nova.
 func _announcement(room: Object) -> Dictionary:
 	var summary: Dictionary = room.call("summary")
@@ -607,6 +607,7 @@ func _announcement(room: Object) -> Dictionary:
 	return {
 		"name": summary["name"], "format": summary["format"], "seats": seats,
 		"players": players, "phase": summary["phase"], "open": open, "port": port,
+		"felt": summary.get("felt", ""),
 	}
 
 

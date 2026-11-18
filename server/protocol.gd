@@ -52,6 +52,7 @@ const CMD_KICK: String = "kick"               ## {id}
 const CMD_ADD_BOT: String = "add_bot"         ## {level}
 const CMD_REMOVE_BOT: String = "remove_bot"   ## {id}
 const CMD_SETTINGS: String = "settings"       ## {small_blind, big_blind, turn_seconds}
+const CMD_FELT: String = "felt"               ## {felt}: troca a mesa (só na sala de espera)
 const CMD_CLOSE: String = "close"
 
 # Códigos de erro (campo "code" de ERROR). O texto que acompanha já vem em português.

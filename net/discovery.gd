@@ -134,4 +134,5 @@ class Listener:
 			"players": int(data.get("players", 0)),
 			"phase": str(data.get("phase", "")),
 			"open": bool(data.get("open", false)),
+			"felt": str(data.get("felt", "")).left(16),
 		}

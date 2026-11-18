@@ -159,7 +159,7 @@ func _refresh() -> void:
 		# todos e os bots só seguram a partida até o pessoal chegar.
 		tips.append("Dica: no Clássico, deixe \"Manter sala aberta\" em Sim e lugares livres. " \
 			+ "Sua sala aparece aqui para todo mundo e, enquanto o pessoal não chega, você " \
-			+ "vai jogando com bots.")
+			+ "vai jogando com bots que possuem diferentes personalidades/estilos.")
 	_hint.text = "\n".join(tips)
 	_fill_rows()
 	_layout()
@@ -180,6 +180,7 @@ func _fill_rows() -> void:
 		row.title = room_title(room)
 		row.detail = room_detail(room)
 		row.locked = bool(room.get("locked", false))
+		row.felt = str(room.get("felt", ""))
 		row.disabled = _game.joining()
 		row.queue_redraw()
 

@@ -27,6 +27,9 @@ var pickable: bool = true:
 		mouse_filter = Control.MOUSE_FILTER_STOP if value else Control.MOUSE_FILTER_IGNORE
 		queue_redraw()
 
+## Falso: sem o aviso do Beta embaixo (sala de espera, onde não cabe).
+var beta_note: bool = true
+
 var _felt: TableFelt = null
 
 
@@ -68,7 +71,7 @@ func _draw() -> void:
 	var title: String = str(Tables.skin(felt)["name"])
 	draw_string(font, Vector2(0, y), ("Mesa: %s  ›" if pickable else "Mesa: %s") % title,
 		HORIZONTAL_ALIGNMENT_CENTER, size.x, font_size, get_theme_color("text", T))
-	if pickable and felt != Tables.SALAO:
+	if pickable and beta_note and felt != Tables.SALAO:
 		draw_string(font, Vector2(0, y + 17.0), "Grátis no Beta.", HORIZONTAL_ALIGNMENT_CENTER,
 			size.x, font_size, get_theme_color("accent", T))
 		draw_string(small, Vector2(0, y + 33.0), "Depois, só na Loja.",

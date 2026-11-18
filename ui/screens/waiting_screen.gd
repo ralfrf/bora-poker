@@ -127,8 +127,12 @@ func _build() -> void:
 	_hint.theme_type_variation = "SmallLabel"
 	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	add_child(_hint)
+	# O dono troca a mesa tocando na miniatura; os outros só veem (pedido do dono, 18/11/2026).
 	_felt = TableChoice.new()
 	_felt.pickable = false
+	_felt.beta_note = false
+	_felt.felt_changed.connect(func(id: String) -> void:
+		_game.owner(Protocol.CMD_FELT, {"felt": id}))
 	add_child(_felt)
 	for i in 9:
 		var chip: SeatChip = SeatChip.new()
@@ -252,6 +256,7 @@ func _refresh() -> void:
 	var seats: int = int(options.get("seats", 0))
 	_felt.visible = not options.is_empty()
 	_felt.felt = str(options.get("felt", "salao"))
+	_felt.pickable = owner and str(room.get("phase", "")) == Protocol.LOBBY
 	_title.text = str(room.get("name", "Entrando na sala…"))
 	_summary.text = _options_text(options) if not options.is_empty() else ""
 	_code.text = _game.room_code()
@@ -303,7 +308,7 @@ func _refresh() -> void:
 	elif owner:
 		_status.text = ("Precisa de pelo menos 2 na mesa (bots contam). " if players < 2
 			else "Toque num bot ou jogador para tirar da sala. ") \
-			+ "No seu lugar, para trocar o avatar."
+			+ "No seu lugar, para trocar o avatar. Na mesa, para trocá-la."
 	elif int(state.get("you", {}).get("seat", -1)) < 0:
 		_status.text = "Toque num lugar livre para sentar." if can_sit \
 			else "A sala está cheia: você está assistindo. Quando abrir um lugar, toque nele."

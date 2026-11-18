@@ -3,17 +3,51 @@ extends Button
 ## direita, um selo curto (a % de lotação, por exemplo), o cadeado das salas com senha e
 ## a seta de entrar.
 
+const TableFelt := preload("res://ui/widgets/table_felt.gd")
+const Tables := preload("res://ui/theme/tables.gd")
+
 const FORMAT_NAMES: Dictionary = {"classic": "Clássico", "tournament": "Torneio"}
+## Miniatura da mesa da sala: a mesa de verdade desenhada grande e reduzida.
+const THUMB: Vector2 = Vector2(58, 30)
+const THUMB_SHRINK: float = 0.3
 
 var title: String = ""
 var detail: String = ""
 var badge: String = ""
 var locked: bool = false
+## A mesa escolhida pelo dono da sala; "" = sem miniatura (servidor antigo, servidores).
+var felt: String = "":
+	set(value):
+		felt = value if value == "" or Tables.ALL.has(value) else Tables.SALAO
+		_sync_thumb()
+
+var _thumb: TableFelt = null
 
 
 func _init() -> void:
 	flat = true
 	focus_mode = Control.FOCUS_NONE
+
+
+func _sync_thumb() -> void:
+	if felt == "":
+		if _thumb != null:
+			_thumb.visible = false
+		queue_redraw()
+		return
+	if _thumb == null:
+		_thumb = TableFelt.new()
+		_thumb.show_room = false
+		_thumb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_thumb.scale = Vector2.ONE * THUMB_SHRINK
+		var full: Vector2 = THUMB / THUMB_SHRINK
+		var inset: float = TableFelt.RAIL + 4.0
+		_thumb.size = full
+		_thumb.felt_rect = Rect2(Vector2.ONE * inset, full - Vector2.ONE * inset * 2.0)
+		add_child(_thumb)
+	_thumb.visible = true
+	_thumb.skin = Tables.skin(felt)
+	queue_redraw()
 
 
 func _draw() -> void:
@@ -41,6 +75,14 @@ func _draw() -> void:
 		draw_string(strong, Vector2(right - badge_w, size.y / 2.0 + body / 2.0 - 2.0), badge,
 			HORIZONTAL_ALIGNMENT_LEFT, -1, body, get_theme_color("text", "Tokens"))
 		right -= badge_w + 12.0
+	if felt != "" and _thumb != null:
+		# A mesa da sala, com o nome embaixo.
+		var top: float = (size.y - THUMB.y - small - 2.0) / 2.0
+		_thumb.position = Vector2(right - THUMB.x, top).round()
+		draw_string(get_theme_font("text", "Tokens"), Vector2(right - THUMB.x, top + THUMB.y + small),
+			str(Tables.skin(felt)["name"]), HORIZONTAL_ALIGNMENT_CENTER, THUMB.x, small - 2,
+			get_theme_color("text_dim", "Tokens"))
+		right -= THUMB.x + 14.0
 	var width: float = maxf(20.0, right - 16.0)
 	var color: Color = get_theme_color("text", "Tokens")
 	if disabled:

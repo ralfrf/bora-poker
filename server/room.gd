@@ -716,7 +716,7 @@ func humans() -> int:
 	return count
 
 
-## Resumo para a lista de salas (SPEC 9.3): dono, formato, lugares, blinds, se tem
+## Resumo para a lista de salas (SPEC 9.3): dono, formato, lugares, blinds, mesa, se tem
 ## senha (locked) e se aceita gente nova agora (open). Nunca a senha.
 func summary() -> Dictionary:
 	var players: int = table.seats.filter(func(seat: Table.Seat) -> bool:
@@ -727,7 +727,8 @@ func summary() -> Dictionary:
 		"players": players, "phase": phase, "keep_open": options["keep_open"],
 		"owner": owner.nick if owner != null else "",
 		"small_blind": table.small_blind, "big_blind": table.big_blind,
-		"level_minutes": options["level_minutes"], "locked": has_password(),
+		"level_minutes": options["level_minutes"], "felt": options.get("felt", DEFAULT_FELT),
+		"locked": has_password(),
 		"open": players < int(options["seats"])
 			and (phase == Protocol.LOBBY or (phase == Protocol.PLAYING and options["keep_open"])),
 	}
@@ -964,6 +965,15 @@ func _owner_command(member: Member, message: Dictionary) -> String:
 			var refusal: String = _change_settings(message)
 			if refusal != "":
 				return refusal
+		Protocol.CMD_FELT:
+			# A mesa da sala muda só na sala de espera; todos veem (SPEC 12).
+			if phase != Protocol.LOBBY:
+				return "a mesa só muda na sala de espera"
+			var felt: Variant = message.get("felt")
+			if typeof(felt) != TYPE_STRING or not FELTS.has(felt):
+				return "mesa desconhecida"
+			options["felt"] = felt
+			_summary_point()
 		Protocol.CMD_CLOSE:
 			close(Protocol.R_OWNER)
 			return ""

@@ -487,6 +487,26 @@ func test_settings_apply_between_hands() -> void:
 	assert_eq(_last(owner, Protocol.ERROR).get("text"), "blinds inválidos")
 
 
+func test_owner_changes_felt_in_lobby() -> void:
+	var pair: Array = _classic_pair()
+	var room: Room = pair[0]
+	var owner: String = pair[1]
+	var guest: String = pair[2]
+	assert_eq(room.summary()["felt"], Room.DEFAULT_FELT, "a lista mostra a mesa")
+	room.handle(owner, {"t": Protocol.OWNER, "cmd": Protocol.CMD_FELT, "felt": "safira"})
+	assert_eq(room.options["felt"], "safira", "o dono troca na sala de espera")
+	assert_eq(room.summary()["felt"], "safira")
+	assert_eq(_last(guest, Protocol.STATE)["room"]["options"]["felt"], "safira", "todos veem")
+	room.handle(guest, {"t": Protocol.OWNER, "cmd": Protocol.CMD_FELT, "felt": "rubi"})
+	assert_eq(room.options["felt"], "safira", "só o dono troca")
+	room.handle(owner, {"t": Protocol.OWNER, "cmd": Protocol.CMD_FELT, "felt": "dourada"})
+	assert_eq(_last(owner, Protocol.ERROR).get("text"), "mesa desconhecida")
+	room.handle(owner, {"t": Protocol.START})
+	room.handle(owner, {"t": Protocol.OWNER, "cmd": Protocol.CMD_FELT, "felt": "perola"})
+	assert_eq(_last(owner, Protocol.ERROR).get("text"), "a mesa só muda na sala de espera")
+	assert_eq(room.options["felt"], "safira")
+
+
 func test_close_mid_hand_refunds_bets() -> void:
 	var pair: Array = _classic_pair()
 	var room: Room = pair[0]

@@ -119,6 +119,7 @@ func _refresh() -> void:
 			elif not room["open"]:
 				parts.append("cheia")
 			row.detail = " · ".join(parts)
+			row.felt = str(room.get("felt", ""))
 			row.queue_redraw()
 	_layout()
 
