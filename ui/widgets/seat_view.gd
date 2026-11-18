@@ -14,7 +14,8 @@ const PLATE_H: float = 36.0
 
 ## nick, stack, avatar, turn, fraction (0 a 1 do tempo que resta), folded, all_in,
 ## dealer, blind ("SB", "BB" ou vazio), rebuys (recompras feitas), tag (texto curto da última ação), winner,
-## away, empty, countdown ("1:45": tempo até o lugar ser liberado, em cima do avatar).
+## away, empty, countdown ("1:45": tempo até o lugar ser liberado, em cima do avatar), bot
+## (apelido em azul-claro).
 var data: Dictionary = {}:
 	set(value):
 		data = value
@@ -147,8 +148,10 @@ func _draw() -> void:
 	var name_text: String = _ellipsis(font, String(data.get("nick", "")), small, text_w)
 	draw_string(font, name_at + Vector2(0, 1), name_text, HORIZONTAL_ALIGNMENT_CENTER, text_w,
 		small, Color(0, 0, 0, 0.5))
+	# Bot com o apelido em azul-claro, para não ser confundido com gente.
+	var name_color: Color = get_theme_color("bot_name", T) if data.get("bot", false) 		else Color(text_color, 0.88)
 	draw_string(font, name_at, name_text, HORIZONTAL_ALIGNMENT_CENTER, text_w, small,
-		Color(text_color, 0.88))
+		name_color)
 	_amount(int(data.get("stack", 0)), text_left, text_w, plate.position.y + 30.0)
 	# A última ação (ou o nome da mão no showdown) numa etiqueta presa embaixo da placa,
 	# para o apelido continuar à vista.

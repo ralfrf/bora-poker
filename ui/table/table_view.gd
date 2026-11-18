@@ -436,6 +436,7 @@ func render(state: Dictionary) -> void:
 			counting[seat_index] = true
 		var info: Dictionary = {
 			"nick": member.get("nick", ""), "avatar": member.get("avatar", 0),
+			"bot": member.get("bot", false),
 			"stack": entry.get("stack", 0), "turn": turn, "fraction": fraction,
 			"folded": entry.get("folded", false),
 			"all_in": entry.get("all_in", false) and not shown.has(seat_index),

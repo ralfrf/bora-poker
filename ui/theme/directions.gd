@@ -32,7 +32,7 @@ const ALL: Array[Dictionary] = [
 			"rail_line": "#E2B65C", "felt_line": "#FFFFFF",
 			"accent": "#F2C14E", "accent_top": "#FFE7A3", "accent_line": "#8F6116",
 			"on_accent": "#2A1A02",
-			"text": "#F4F6F8", "text_dim": "#9AA6B4",
+			"text": "#F4F6F8", "text_dim": "#9AA6B4", "bot_name": "#8EC9FF",
 			"surface": "#0F1520", "surface_top": "#243045", "surface_line": "#34425A",
 			"shadow": "#000000",
 			"card_face": "#FFFFFF", "card_face_low": "#ECE6D8", "card_line": "#C9C2B2",
