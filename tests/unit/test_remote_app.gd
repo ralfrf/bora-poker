@@ -256,6 +256,12 @@ func test_load_probe_wakes_then_gives_up() -> void:
 		if probe.state == LoadProbe.State.DOWN:
 			break
 	assert_eq(probe.state, LoadProbe.State.DOWN, "1 minuto sem resposta: em manutenção")
+	clock.advance(LoadProbe.DOWN_RETRY_MS - 1000)
+	probe.poll()
+	assert_eq(int(probe.get("_attempt_at")), -1, "em manutenção: ainda esperando")
+	clock.advance(1000)
+	probe.poll()
+	assert_true(int(probe.get("_attempt_at")) >= 0, "em manutenção: pergunta de novo a cada 10 s")
 	probe.close()
 	silent.stop()
 

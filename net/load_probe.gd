@@ -25,6 +25,8 @@ const GIVE_UP_MS: int = 60000
 const ATTEMPT_MS: int = 20000
 const RETRY_MS: int = 2000
 const REFRESH_MS: int = 20000
+## Em manutenção: pergunta de novo a cada 10 s (pedido do dono, 18/11/2026).
+const DOWN_RETRY_MS: int = 10000
 const MAX_BODY: int = 4096
 
 var state: State = State.ASKING
@@ -240,7 +242,7 @@ func _failed(now: int) -> void:
 		return
 	if now - _started >= GIVE_UP_MS:
 		state = State.DOWN
-		_next_at = now + REFRESH_MS
+		_next_at = now + DOWN_RETRY_MS
 		return
 	_next_at = now + RETRY_MS
 
