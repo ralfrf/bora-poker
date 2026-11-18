@@ -255,7 +255,7 @@ func test_load_probe_wakes_then_gives_up() -> void:
 		probe.poll()
 		if probe.state == LoadProbe.State.DOWN:
 			break
-	assert_eq(probe.state, LoadProbe.State.DOWN, "2 minutos sem resposta: em manutenção")
+	assert_eq(probe.state, LoadProbe.State.DOWN, "1 minuto sem resposta: em manutenção")
 	probe.close()
 	silent.stop()
 
@@ -389,7 +389,7 @@ func test_load_probe_offline_when_address_not_found() -> void:
 	var probe: LoadProbe = LoadProbe.new("wss://bora-poker-teste.invalid")
 	assert_true(_spin(func() -> void: probe.poll(),
 		func() -> bool: return probe.state == LoadProbe.State.OFFLINE, 15000),
-		"endereço não encontrado: sem internet, sem esperar os 2 minutos")
+		"endereço não encontrado: sem internet, sem esperar o 1 minuto")
 	# A internet volta: a próxima tentativa encontra o servidor e mostra a lotação.
 	var host: RemoteHost = RemoteHost.new(null, {"room": FAST})
 	assert_eq(host.listen(0, "127.0.0.1"), OK)

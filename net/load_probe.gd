@@ -3,13 +3,13 @@ extends RefCounted
 ## porta do WebSocket. A pergunta também acorda o servidor do Render, que dorme depois de
 ## 15 minutos sem ninguém: por isso começa assim que a pessoa escolhe "Amigos à
 ## distância". Sem resposta em 3 s, o estado vira WAKING ("Conectando ao servidor…" com o aviso); a
-## sonda insiste por até 2 minutos e, sem resposta, o servidor fica DOWN ("Em
+## sonda insiste por até 1 minuto e, sem resposta, o servidor fica DOWN ("Em
 ## manutenção"). Respondendo, repete a pergunta de tempos em tempos.
 ##
 ## O endereço do servidor não encontrado vira OFFLINE na hora ("Sem internet"), sem
-## esperar os 2 minutos: o Render, mesmo dormindo, sempre tem o endereço. Recusar a
+## esperar o 1 minuto: o Render, mesmo dormindo, sempre tem o endereço. Recusar a
 ## conexão não conta, porque um servidor parado também recusa. Sem internet a sonda
-## tenta a cada 2 s e, quando a internet volta, os 2 minutos contam do zero.
+## tenta a cada 2 s e, quando a internet volta, o 1 minuto conta do zero.
 ##
 ## Sem nós: quem usa chama poll() a cada quadro. O relógio é injetável.
 
@@ -20,7 +20,7 @@ enum State { ASKING, WAKING, READY, DOWN, OLD, OFFLINE }
 
 const DEFAULT_URL: String = "wss://bora-poker.onrender.com"
 const WAKE_NOTICE_MS: int = 3000
-const GIVE_UP_MS: int = 120000
+const GIVE_UP_MS: int = 60000
 ## Uma tentativa pode demorar: o Render segura o pedido enquanto o servidor acorda.
 const ATTEMPT_MS: int = 20000
 const RETRY_MS: int = 2000
@@ -210,7 +210,7 @@ func _finish(now: int) -> void:
 
 
 ## O endereço não foi encontrado: sem internet. Tenta de novo logo e, quando a internet
-## voltar, os 2 minutos até "Em manutenção" contam do zero.
+## voltar, o 1 minuto até "Em manutenção" conta do zero.
 func _offline(now: int) -> void:
 	if once:
 		_failed(now)
@@ -232,7 +232,7 @@ func _failed(now: int) -> void:
 		state = State.WAKING
 	if _answered:
 		# Respondia e parou (reiniciou, ou foi suspenso): volta a "acordando" e conta de
-		# novo os 2 minutos até "Em manutenção".
+		# novo o 1 minuto até "Em manutenção".
 		_answered = false
 		_started = now
 		state = State.WAKING
