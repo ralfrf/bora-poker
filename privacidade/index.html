@@ -13,54 +13,65 @@
   h2 { color: var(--gold); font-size: 1.2em; margin: 32px 0 8px; }
   p, li { color: var(--fg); }
   .data { color: var(--muted); margin: 0 0 24px; }
-  a { color: var(--gold); }
+  a { color: var(--gold); overflow-wrap: anywhere; }
   ul { padding-left: 1.2em; }
 </style>
 </head>
 <body>
 <main>
 <h1>Política de privacidade do Bora Poker</h1>
-<p class="data">Em vigor desde 17 de novembro de 2026.</p>
+<p class="data">Em vigor desde 18 de novembro de 2026.</p>
 
-<p>O Bora Poker: Amigos e Offline é um jogo de Texas Hold'em com fichas virtuais, sem
-dinheiro real. Esta página explica quais dados o app usa, para quê e por quanto tempo.
-Resumo: não há cadastro, não pedimos nome, e-mail, telefone, localização, fotos ou
-contatos, e o app não tem anúncios nem ferramentas de estatística.</p>
+<p>O Bora Poker: Offline e Online sem cadastro é um jogo de Texas Hold'em com fichas virtuais, sem
+dinheiro real, feito por um desenvolvedor independente. Esta página explica quais dados o
+app usa, para quê, com quem eles são compartilhados e por quanto tempo ficam guardados.</p>
+
+<p><strong>Resumo:</strong> não há cadastro nem login. O app não pede nome, e-mail,
+telefone, localização, fotos ou contatos. Você escolhe só um apelido. O app mostra
+anúncios do Google AdMob e vende itens visuais (mesas, avatares e um período sem
+anúncios) pela Google Play. Fichas não são vendidas.</p>
 
 <h2>O que fica no seu aparelho</h2>
 <ul>
   <li><strong>Perfil:</strong> o apelido e o avatar que você escolhe.</li>
-  <li><strong>Configurações:</strong> sons, vibração e reações.</li>
-  <li><strong>Código do aparelho:</strong> um código aleatório criado pelo próprio app na
-  primeira vez que ele abre. Não é o número do celular nem qualquer identificador do
-  sistema; serve só para a mesa reconhecer você quando a conexão cai e você volta.</li>
+  <li><strong>Configurações e escolhas do jogo:</strong> sons, vibração, reações, as
+  opções do jogo offline, a última mesa escolhida e, se você trocar, o endereço do
+  servidor.</li>
+  <li><strong>Código do aplicativo:</strong> um código aleatório criado pelo próprio app na
+  primeira vez que ele abre. Não é o número do celular, nem o ID de publicidade, nem
+  outro identificador do sistema; serve só para a mesa reconhecer você quando a conexão
+  cai e você volta.</li>
+  <li><strong>Loja:</strong> os avatares que você escolheu depois de uma compra.</li>
   <li><strong>Partida no mesmo Wi-Fi:</strong> o celular de quem cria a sala grava o
   andamento da partida, para continuar se o app fechar.</li>
 </ul>
-<p>Esses dados ficam só no aparelho e somem ao desinstalar o app ou apagar os dados dele.</p>
+<p>Esses dados ficam só no aparelho e somem ao desinstalar o app ou apagar os dados
+dele.</p>
 
 <h2>Jogo offline</h2>
-<p>Contra os bots, nada sai do aparelho.</p>
+<p>Contra os bots, nada sai do aparelho e não há anúncios.</p>
 
 <h2>Jogo no mesmo Wi-Fi</h2>
 <p>O apelido, o avatar e as jogadas vão direto entre os aparelhos da mesma rede, sem
 passar por servidor nosso. A sala é anunciada na rede local para que os outros a
-encontrem. Os outros jogadores veem seu apelido e seu avatar.</p>
+encontrem. Os outros jogadores veem seu apelido, seu avatar e, enquanto você vê um
+anúncio, o aviso "Em anúncio".</p>
 
 <h2>Jogo à distância (Online)</h2>
 <p>Nesse modo o app se conecta a um servidor do jogo hospedado no Render, um serviço de
-hospedagem localizado nos Estados Unidos. O servidor recebe:</p>
+hospedagem nos Estados Unidos. O servidor recebe:</p>
 <ul>
   <li>o apelido e o avatar, que os outros jogadores da sala veem;</li>
-  <li>o código do aparelho, para devolver seu lugar se você cair e voltar;</li>
-  <li>as jogadas da partida e as reações que você envia;</li>
+  <li>o código do aplicativo, para devolver seu lugar se você cair e voltar;</li>
+  <li>as jogadas, as reações que você envia e a mesa escolhida para a sala;</li>
   <li>a senha da sala, se quem criou a sala escolheu uma;</li>
+  <li>o aviso de que você está vendo um anúncio, para a sala esperar por você;</li>
   <li>o endereço IP da conexão, usado só para limitar tentativas erradas de senha.</li>
 </ul>
 <p>Tudo isso fica apenas na memória do servidor enquanto a sala existe e é descartado
 quando ela acaba. O servidor não grava esses dados em banco de dados nem em arquivos de
 registro. Para a partida continuar se o servidor reiniciar, os aparelhos da sala guardam
-um resumo assinado da partida, sem cartas e sem senha, com o código do aparelho trocado
+um resumo assinado da partida, sem cartas e sem senha, com o código do aplicativo trocado
 por uma marca que vale só para aquela sala.</p>
 <p>O Render, como qualquer provedor de hospedagem, pode registrar dados técnicos da
 conexão, como o endereço IP e o horário, conforme a
@@ -68,37 +79,70 @@ conexão, como o endereço IP e o horário, conforme a
 <p>Se você digitar nas opções avançadas o endereço de outro servidor, os mesmos dados vão
 para esse servidor, sob a responsabilidade de quem o mantém.</p>
 
+<h2>Anúncios</h2>
+<p>Os anúncios são mostrados pelo Google AdMob, um serviço do Google, só nos jogos no
+mesmo Wi-Fi e à distância; no jogo offline não há anúncios. Eles aparecem ao entrar numa
+sala de espera, entre uma partida e outra e, se você escolher, em vídeo antes de voltar
+com fichas à mesa. Nunca durante uma mão. Sem internet, não há anúncio.</p>
+<p>Para mostrar e medir os anúncios e evitar fraudes, o AdMob recolhe do aparelho dados
+como o ID de publicidade do Android, o endereço IP (do qual pode deduzir a região
+aproximada), o modelo e o sistema do aparelho, o idioma e quais anúncios foram vistos ou
+tocados. Esses dados vão direto do aparelho para o Google; o Bora Poker não os recebe nem
+os guarda. Os anúncios podem ser personalizados conforme os seus interesses.</p>
+<p>Você pode apagar ou trocar o ID de publicidade, e com isso desligar os anúncios
+personalizados, nas configurações do Android (em "Privacidade" → "Anúncios", ou
+"Google" → "Anúncios", conforme o aparelho).</p>
+<p>Anúncios de apostas e de jogos a dinheiro ficam bloqueados. Saiba mais em
+<a href="https://policies.google.com/technologies/partner-sites">como o Google usa dados
+de apps parceiros</a> e na
+<a href="https://policies.google.com/privacy">política de privacidade do Google</a>.</p>
+
+<h2>Compras</h2>
+<p>As compras da Loja são feitas pela Google Play. O pagamento, o cartão e os dados da sua
+conta Google ficam com o Google; o Bora Poker não os vê. Da Google Play, o app recebe só
+qual item foi comprado, a data da compra e um código de confirmação, para liberar o item e
+contar o período sem anúncios. Esses dados não vão para o nosso servidor.</p>
+<p>As compras ficam ligadas à sua conta Google: ao instalar de novo ou trocar de celular,
+o botão "Recuperar compras" as traz de volta. O tratamento dos dados de pagamento segue a
+<a href="https://policies.google.com/privacy">política de privacidade do Google</a>.</p>
+<p>Só itens visuais e o período sem anúncios são vendidos. As fichas são virtuais, não se
+compram, não valem dinheiro e não dão prêmios.</p>
+
 <h2>Compartilhamento</h2>
-<p>Não vendemos nem compartilhamos dados com ninguém. Além dos outros jogadores da sua
-mesa e do provedor de hospedagem citado acima, nenhum terceiro recebe dados do app.</p>
+<p>Não vendemos dados. Recebem dados do app apenas: os outros jogadores da sua mesa
+(apelido, avatar e jogadas), o Render (hospedagem do jogo à distância) e o Google
+(anúncios e compras), como descrito acima.</p>
 
 <h2>Segurança</h2>
 <p>A conexão com o servidor à distância é criptografada (WebSocket seguro, wss). No
 mesmo Wi-Fi a conexão é local, entre os aparelhos da rede.</p>
 
 <h2>Idade</h2>
-<p>O Bora Poker é destinado a maiores de 18 anos e não é direcionado a crianças. As
-fichas são virtuais, não podem ser compradas, não valem dinheiro e não dão prêmios.</p>
+<p>O Bora Poker é destinado a maiores de 18 anos e não é direcionado a crianças.</p>
 
 <h2>Seus direitos</h2>
 <p>Como não guardamos dados depois que a sala acaba, não há conta para apagar. Você pode
 mudar o apelido e o avatar a qualquer momento no app, e apagar tudo o que ele guarda
-desinstalando-o ou limpando os dados dele nas configurações do Android. Dúvidas ou
-pedidos sobre a Lei Geral de Proteção de Dados (LGPD) podem ser enviados pelos contatos
-abaixo.</p>
+desinstalando-o ou limpando os dados dele nas configurações do Android. Os dados dos
+anúncios e das compras são controlados pelo Google, nas configurações do Android e da sua
+conta Google. Dúvidas ou pedidos sobre os seus dados, pela Lei Geral de Proteção de Dados
+(LGPD) do Brasil ou pela lei de proteção de dados do seu país, podem ser enviados pelos
+contatos abaixo.</p>
 
 <h2>Permissões do Android</h2>
 <ul>
   <li><strong>Internet e estado da rede e do Wi-Fi:</strong> para jogar no mesmo Wi-Fi e
-  à distância.</li>
+  à distância, e para os anúncios e as compras.</li>
   <li><strong>Multicast do Wi-Fi:</strong> para encontrar salas na rede local.</li>
   <li><strong>Vibração:</strong> para avisar quando sua vez está acabando (pode ser
   desligada).</li>
+  <li><strong>ID de publicidade:</strong> usada pelo Google AdMob para os anúncios.</li>
+  <li><strong>Cobrança da Google Play:</strong> para as compras da Loja.</li>
 </ul>
 
 <h2>Mudanças nesta política</h2>
-<p>Se o app passar a usar outros dados (por exemplo, anúncios), esta página será
-atualizada antes, com a nova data no alto.</p>
+<p>Se o app passar a usar outros dados, esta página será atualizada antes, com a nova data
+no alto.</p>
 
 <h2>Contato</h2>
 <p>Pelo e-mail do desenvolvedor na página do Bora Poker na Google Play, ou abrindo um
