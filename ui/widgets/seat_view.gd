@@ -15,7 +15,7 @@ const PLATE_H: float = 36.0
 ## nick, stack, avatar, turn, fraction (0 a 1 do tempo que resta), folded, all_in,
 ## dealer, blind ("SB", "BB" ou vazio), rebuys (recompras feitas), tag (texto curto da última ação), winner,
 ## away, empty, countdown ("1:45": tempo até o lugar ser liberado, em cima do avatar), bot
-## (apelido em azul-claro).
+## (selo com um robozinho).
 var data: Dictionary = {}:
 	set(value):
 		data = value
@@ -131,6 +131,10 @@ func _draw() -> void:
 		draw_string(clock_font, Vector2(center.x - r, center.y + clock_size * 0.36), countdown,
 			HORIZONTAL_ALIGNMENT_CENTER, AVATAR, clock_size, text_color)
 
+	# Bot: selo com um robozinho embaixo do avatar, no meio do aro.
+	if data.get("bot", false):
+		_bot_badge(center + Vector2(0, r + 1.0))
+
 	# Marcador de recompras no avatar, do lado de fora (no seu lugar, embaixo).
 	var rebuys: int = int(data.get("rebuys", 0))
 	if rebuys > 0:
@@ -148,10 +152,8 @@ func _draw() -> void:
 	var name_text: String = _ellipsis(font, String(data.get("nick", "")), small, text_w)
 	draw_string(font, name_at + Vector2(0, 1), name_text, HORIZONTAL_ALIGNMENT_CENTER, text_w,
 		small, Color(0, 0, 0, 0.5))
-	# Bot com o apelido em azul-claro, para não ser confundido com gente.
-	var name_color: Color = get_theme_color("bot_name", T) if data.get("bot", false) 		else Color(text_color, 0.88)
 	draw_string(font, name_at, name_text, HORIZONTAL_ALIGNMENT_CENTER, text_w, small,
-		name_color)
+		Color(text_color, 0.88))
 	_amount(int(data.get("stack", 0)), text_left, text_w, plate.position.y + 30.0)
 	# A última ação (ou o nome da mão no showdown) numa etiqueta presa embaixo da placa,
 	# para o apelido continuar à vista.
@@ -223,6 +225,31 @@ func _rebuy_badge(spot: Vector2, count: int) -> void:
 	draw_arc(spot, radius - 2.0, PI * 1.15, PI * 1.85, 10, Color(1, 1, 1, 0.45), 1.0, true)
 	draw_string(font, Vector2(spot.x - radius, spot.y + font_size * 0.36), text,
 		HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, font_size, get_theme_color("on_accent", T))
+
+
+## Selo do bot: disco azul com a cabeça de um robô (antena, orelhas e dois olhos).
+func _bot_badge(spot: Vector2) -> void:
+	var tint: Color = get_theme_color("bot_name", T)
+	var ink: Color = Color(0.05, 0.12, 0.2)
+	var radius: float = 6.5
+	draw_circle(spot + Vector2(0, 1.2), radius, Color(0, 0, 0, 0.45), true, -1.0, true)
+	draw_circle(spot, radius, tint.darkened(0.55), true, -1.0, true)
+	draw_circle(spot, radius - 1.2, tint, true, -1.0, true)
+	var u: float = radius - 1.2
+	# Antena.
+	draw_line(spot + Vector2(0, -0.28) * u, spot + Vector2(0, -0.6) * u, ink, 1.0, true)
+	draw_circle(spot + Vector2(0, -0.66) * u, 0.13 * u, ink, true, -1.0, true)
+	# Orelhas e cabeça.
+	draw_rect(Rect2(spot + Vector2(-0.68, -0.08) * u, Vector2(0.14, 0.32) * u), ink)
+	draw_rect(Rect2(spot + Vector2(0.54, -0.08) * u, Vector2(0.14, 0.32) * u), ink)
+	var head: StyleBoxFlat = StyleBoxFlat.new()
+	head.bg_color = ink
+	head.set_corner_radius_all(int(maxf(0.18 * u, 1.0)))
+	head.anti_aliasing = true
+	draw_style_box(head, Rect2(spot + Vector2(-0.52, -0.3) * u, Vector2(1.04, 0.8) * u))
+	# Olhos acesos.
+	for x: float in [-0.22, 0.22]:
+		draw_circle(spot + Vector2(x, 0.06) * u, 0.12 * u, tint, true, -1.0, true)
 
 
 ## Botão do dealer: uma ficha branca com "B".
