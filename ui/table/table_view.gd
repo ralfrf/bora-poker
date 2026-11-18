@@ -580,7 +580,7 @@ func _refresh_rebuy_text() -> void:
 	if _prompt_kind != "rebuy":
 		return
 	# "Retornar", não "recomprar": as fichas são do jogo e não se compram (pedido do dono).
-	var text: String = ("Suas fichas acabaram. Assista a um anúncio e volte à mesa com as fichas iniciais, de graça." 		if rebuy_ads else "Suas fichas acabaram. Toque em Retornar para voltar à mesa com as fichas iniciais.") 		+ " Cada retorno soma 1 no contador do seu avatar."
+	var text: String = ("Suas fichas acabaram. Assista a um anúncio e volte à mesa com as fichas iniciais." 		if rebuy_ads else "Suas fichas acabaram. Toque em Retornar para voltar à mesa com as fichas iniciais.") 		+ " Cada retorno soma 1 no contador do seu avatar."
 	if _rebuy_left_ms >= 0:
 		text += " %d s para decidir." % ceili(_rebuy_left_ms / 1000.0)
 	_prompt_text.text = text
