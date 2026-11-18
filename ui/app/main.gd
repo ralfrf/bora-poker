@@ -174,7 +174,7 @@ func _start_game(choice: Dictionary) -> void:
 	game.begin(profile.nick, profile.avatar, profile.device, OfflineOptions.build(choice))
 	_session = game
 	var screen: GameScreen = GameScreen.new(game)
-	screen.finished.connect(_show_result.bind(_replay_offline))
+	screen.finished.connect(_show_result.bind(_replay_offline, false))
 	_show(screen)
 
 
@@ -294,12 +294,18 @@ func _end_session() -> void:
 
 
 ## again: para onde vai "Jogar de novo" (a mesa offline de novo ou a lista de salas).
-func _show_result(final: Dictionary, members: Array, my_id: String, again: Callable) -> void:
+## ads: false no offline, que não tem anúncio nenhum (dono, 18/11/2026).
+func _show_result(final: Dictionary, members: Array, my_id: String, again: Callable,
+		ads: bool = true) -> void:
 	_end_session()
 	var screen: ResultScreen = ResultScreen.new(final, members, my_id)
 	# O anúncio de tela cheia, quando existir, passa aqui: entre uma partida e outra.
-	screen.again.connect(func() -> void: Ads.interstitial(func() -> void: again.call()))
-	screen.home.connect(func() -> void: Ads.interstitial(_show_home))
+	if ads:
+		screen.again.connect(func() -> void: Ads.interstitial(func() -> void: again.call()))
+		screen.home.connect(func() -> void: Ads.interstitial(_show_home))
+	else:
+		screen.again.connect(func() -> void: again.call())
+		screen.home.connect(_show_home)
 	_show(screen)
 
 
