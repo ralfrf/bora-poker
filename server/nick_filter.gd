@@ -55,6 +55,8 @@ const ANYWHERE: Array[String] = [
 	"nigger", "nigga", "negroimund", "pretoimund", "negrosujo", "pretosujo",
 	"macacoimund", "chingchong", "wetback", "raghead", "judeusujo", "matajudeu",
 	"matapreto", "mataviado", "matagay",
+	# Preconceito declarado.
+	"machist", "machism", "misogin", "homofob", "transfob", "xenofob",
 	# Violência sexual, pedofilia e terrorismo.
 	"estupr", "pedofil", "binladen",
 ]

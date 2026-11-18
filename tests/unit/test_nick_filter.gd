@@ -24,7 +24,8 @@ func test_nick_filter_blocks_hate() -> void:
 			"Ku Klux Klan", "Auschwitz", "Crioulo", "Macaco Imundo", "Preto Sujo",
 			"Nigga", "Nigger", "Ching Chong", "Viado", "Bicha", "Traveco", "Sapatão",
 			"Boiola", "Faggot", "Retardado", "Estuprador", "Pedófilo", "MataGay",
-			"Judeu Sujo", "Facista33", "Fascista", "FASCISMO", "Supremacista", "Racista"]:
+			"Judeu Sujo", "Facista33", "Fascista", "FASCISMO", "Supremacista", "Racista", "Machista", "M4ch1st4",
+			"Machismo", "Misógino", "Homofóbico", "Transfóbica", "Xenófobo"]:
 		assert_true(NickFilter.blocked(nick), "barrado: " + nick)
 
 
@@ -33,7 +34,7 @@ func test_nick_filter_keeps_common_names() -> void:
 			"Computador", "Viaduto", "Desviado", "Boston", "Pica-Pau", "Picasso", "Rolando",
 			"Cornélio", "Nazaré", "Nazira", "Neguinho", "Shitake", "Scunthorpe", "Esmeralda",
 			"Escobar", "Bicharada", "Fodor Jr", "Rafa 88", "Zé 2014", "João 2", "Jogador",
-			"kkkkk", "Mãe", "Fascinante", "Fascínio", "Face", "Graça", "Poker Face", "All-in Ana", "Dona Cida", "Lu", "Tião"]:
+			"kkkkk", "Mãe", "Fascinante", "Fascínio", "Face", "Graça", "Machado", "Macho", "Homero", "Poker Face", "All-in Ana", "Dona Cida", "Lu", "Tião"]:
 		assert_false(NickFilter.blocked(nick), "aceito: " + nick)
 	for entry: Array in Roster.NAMES:
 		assert_false(NickFilter.blocked(entry[0]), "nome de bot: " + str(entry[0]))
