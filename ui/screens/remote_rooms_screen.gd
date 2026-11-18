@@ -155,6 +155,11 @@ func _refresh() -> void:
 	if _game.link == RemoteGame.Link.ONLINE and _rooms.is_empty():
 		tips.append("Crie uma sala e passe o código aos amigos, ou espere a sala deles " \
 			+ "aparecer aqui.")
+		# Para juntar jogadores (pedido do dono, 18/11/2026): a sala aberta aparece para
+		# todos e os bots só seguram a partida até o pessoal chegar.
+		tips.append("Dica: no Clássico, ligue \"Manter sala aberta\" e deixe lugares livres. " \
+			+ "Sua sala aparece aqui para todo mundo e, enquanto o pessoal não chega, você " \
+			+ "vai jogando com bots.")
 	_hint.text = "\n".join(tips)
 	_fill_rows()
 	_layout()
