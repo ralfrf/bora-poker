@@ -11,6 +11,7 @@ const CloseButton := preload("res://ui/widgets/close_button.gd")
 const CardView := preload("res://ui/widgets/card_view.gd")
 const SafeArea := preload("res://ui/theme/safe_area.gd")
 const Money := preload("res://engine/money.gd")
+const PotMath := preload("res://ui/table/pot_math.gd")
 const T: String = "Tokens"
 
 const PANEL_W: float = 780.0
@@ -184,18 +185,23 @@ func _show_message(text: String) -> void:
 func _outcome(record: Dictionary) -> Array:
 	if record.get("cancelled", false):
 		return ["Cancelada: fichas devolvidas", -1, false]
+	var groups: Array = PotMath.groups(record.get("payouts", []), record.get("pots", []))
 	var names: Array[String] = []
 	var total: int = 0
 	var me: bool = false
-	for payout: Dictionary in record.get("payouts", []):
-		total += int(payout["amount"])
-		var player: Dictionary = _player(record, int(payout["seat"]))
-		names.append(_nick(player))
-		me = me or player.get("id", "") == _my_id
+	for group: Dictionary in groups:
+		total += int(group["amount"])
+		for seat: Variant in group["seats"]:
+			var player: Dictionary = _player(record, int(seat))
+			names.append(_nick(player))
+			me = me or player.get("id", "") == _my_id
 	if names.is_empty():
 		return ["", -1, false]
 	var who: String = names[0] if names.size() == 1 else " e ".join(names)
-	return ["%s %s" % [who, "ganha" if names.size() == 1 else "dividem"], total, me]
+	# Pote dividido: "dividem"; potes paralelos com ganhadores diferentes: "ganham" (o
+	# detalhe mostra quanto cada um levou).
+	var verb: String = "ganha" if names.size() == 1 else ("dividem" if groups.size() == 1 else "ganham")
+	return ["%s %s" % [who, verb], total, me]
 
 
 func _player(record: Dictionary, seat: int) -> Dictionary:

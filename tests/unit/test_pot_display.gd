@@ -1,0 +1,146 @@
+extends "res://tests/test_case.gd"
+## Valores do pote na tela: o pote do centro não conta duas vezes as apostas que ainda
+## estão na frente dos lugares, e o aviso do fim da mão diz quanto cada um levou.
+
+const Cards := preload("res://engine/cards.gd")
+const Deck := preload("res://engine/deck.gd")
+const Hand := preload("res://engine/hand.gd")
+const Positions := preload("res://engine/positions.gd")
+const Table := preload("res://engine/table.gd")
+const View := preload("res://server/view.gd")
+const HandLog := preload("res://server/hand_log.gd")
+const PotMath := preload("res://ui/table/pot_math.gd")
+
+const BOARD: String = "2c 7d 9h Jc 3s"
+
+
+func _rigged(seats: Array[int], button: int, holes: Array, board: String) -> Array[int]:
+	var top: Array[int] = []
+	for card_index in 2:
+		for seat in Positions.order_after(seats, button):
+			top.append(Cards.list_from_text(holes[seat])[card_index])
+	top.append_array(Cards.list_from_text(board))
+	return Deck.stacked(top)
+
+
+func _table(players: int) -> Table:
+	var table: Table = Table.new()
+	assert_eq(table.configure({"format": Table.CLASSIC}), "")
+	for i in players:
+		assert_eq(table.add_player(i, "j%d" % i), "")
+	return table
+
+
+func _view(table: Table) -> Dictionary:
+	var ids: Dictionary = {}
+	for seat in table.hand.players:
+		ids[seat.seat] = table.seat_at(seat.seat).id
+	return View.public(table, ids)
+
+
+func _bets(view: Dictionary) -> int:
+	var sum: int = 0
+	for entry: Dictionary in view["seats"]:
+		sum += int(entry["bet"])
+	return sum
+
+
+func _act(table: Table, seat: int, action: String, amount: int = 0) -> Array:
+	var response: Dictionary = table.apply_action(seat, action, amount)
+	assert_true(response["ok"], "lugar %d %s: %s" % [seat, action, response["error"]])
+	return response["events"]
+
+
+func test_everyone_folds_after_a_raise() -> void:
+	# Blinds 10/20; o botão aumenta para 60 e os dois blinds desistem. Na mesa ficaram
+	# 10 + 20 + 60, mas 40 do aumento ninguém pagou e voltam para ele: o pote é 50.
+	var table: Table = _table(3)
+	assert_true(table.start_hand({"seed": 1, "button": 0})["ok"])
+	var view: Dictionary = _view(table)
+	assert_eq(PotMath.center(view), 0, "antes do flop nada foi recolhido: o centro fica vazio")
+	assert_eq(PotMath.center(view) + _bets(view), 30, "os blinds aparecem só na frente dos lugares")
+
+	_act(table, 0, Hand.RAISE, 60)
+	view = _view(table)
+	assert_eq(PotMath.center(view), 0, "o aumento também fica na frente do lugar")
+	assert_eq(PotMath.center(view) + _bets(view), 90)
+
+	_act(table, 1, Hand.FOLD)
+	var events: Array = _act(table, 2, Hand.FOLD)
+	view = _view(table)
+	var refunds: Dictionary = PotMath.refunds(events)
+	assert_eq(refunds, {0: 40}, "a parte não paga do aumento volta para quem aumentou")
+	assert_eq(PotMath.center(view), 50, "no fim, o centro mostra o que foi entregue")
+	var groups: Array = PotMath.groups(view["result"]["payouts"], view["result"]["pots"])
+	assert_eq(groups, [{"seats": [0], "amount": 50}], "o aviso diz que ele levou 50")
+	assert_eq(table.seat_at(0).stack, 2030, "e as fichas dele batem: 2000 - 20 + 50")
+
+
+func test_collected_chips_stay_in_the_center() -> void:
+	# Todos pagam 20 antes do flop: no flop, os 60 estão no centro e ninguém tem aposta.
+	var table: Table = _table(3)
+	assert_true(table.start_hand({"seed": 2, "button": 0})["ok"])
+	_act(table, 0, Hand.CALL)
+	_act(table, 1, Hand.CALL)
+	_act(table, 2, Hand.CHECK)
+	var view: Dictionary = _view(table)
+	assert_eq(view["street"], "flop")
+	assert_eq(PotMath.center(view), 60)
+	assert_eq(_bets(view), 0)
+	var seat: int = table.hand.to_act
+	_act(table, seat, Hand.BET, 40)
+	view = _view(table)
+	assert_eq(PotMath.center(view), 60, "a aposta nova fica na frente do lugar, não no centro")
+	assert_eq(_bets(view), 40)
+
+
+func test_side_pots_are_not_a_split() -> void:
+	# 0 ganha o pote principal (300) e 1 o paralelo (400): não "dividem 700".
+	var seats: Array[int] = [0, 1, 2]
+	var hand: Hand = Hand.new()
+	var start: Dictionary = hand.start({
+		"seats": [{"seat": 0, "stack": 100}, {"seat": 1, "stack": 300}, {"seat": 2, "stack": 500}],
+		"button": 0, "small_blind": 10, "big_blind": 20,
+		"deck": _rigged(seats, 0, ["As Ah", "Ks Kh", "Qs Qh"], BOARD)})
+	assert_true(start["ok"])
+	assert_true(hand.apply_action(0, Hand.RAISE, 100)["ok"])
+	assert_true(hand.apply_action(1, Hand.RAISE, 300)["ok"])
+	assert_true(hand.apply_action(2, Hand.CALL)["ok"])
+	assert_true(hand.finished)
+	var groups: Array = PotMath.groups(hand.result["payouts"], hand.result["pots"])
+	assert_eq(groups, [{"seats": [1], "amount": 400}, {"seats": [0], "amount": 300}],
+		"uma linha para cada um, com o que cada um levou")
+
+
+func test_real_split_stays_together() -> void:
+	# Os dois têm A-K com o mesmo par de cima: dividem o pote de 40.
+	var seats: Array[int] = [0, 1]
+	var hand: Hand = Hand.new()
+	var start: Dictionary = hand.start({
+		"seats": [{"seat": 0, "stack": 1000}, {"seat": 1, "stack": 1000}],
+		"button": 0, "small_blind": 10, "big_blind": 20,
+		"deck": _rigged(seats, 0, ["As Kd", "Ad Kh"], "Ac Kc 7d 3s 2h")})
+	assert_true(start["ok"])
+	assert_true(hand.apply_action(0, Hand.CALL)["ok"])
+	while not hand.finished:
+		assert_true(hand.apply_action(hand.to_act, Hand.CHECK)["ok"])
+	var groups: Array = PotMath.groups(hand.result["payouts"], hand.result["pots"])
+	assert_eq(groups, [{"seats": [0, 1], "amount": 40}], "uma linha só: dividem 40")
+
+
+func test_history_keeps_who_won_each_pot() -> void:
+	# O histórico guarda os vencedores de cada pote, para a lista dizer o mesmo que a mesa.
+	var table: Table = _table(3)
+	var log: HandLog = HandLog.new()
+	var ids: Dictionary = {0: "j0", 1: "j1", 2: "j2"}
+	var names: Dictionary = {"j0": "Ana", "j1": "Bia", "j2": "Caio"}
+	log.note(table.start_hand({"seed": 1, "button": 0})["events"], table, ids, names)
+	log.note(_act(table, 0, Hand.RAISE, 60), table, ids, names)
+	log.note(_act(table, 1, Hand.FOLD), table, ids, names)
+	log.note(_act(table, 2, Hand.FOLD), table, ids, names)
+	var record: Dictionary = log.for_member("j0")[0]
+	assert_eq(record["pots"], [{"amount": 50, "winners": [0]}])
+	assert_eq(PotMath.groups(record["payouts"], record["pots"]), [{"seats": [0], "amount": 50}])
+	# Registro antigo, sem os potes: cada um com o seu valor.
+	assert_eq(PotMath.groups([{"seat": 2, "amount": 30}, {"seat": 1, "amount": 70}], []),
+		[{"seats": [1], "amount": 70}, {"seats": [2], "amount": 30}])

@@ -39,6 +39,7 @@ const T: String = "Tokens"
 const AdSlot := preload("res://ui/widgets/ad_slot.gd")
 const BoardMarks := preload("res://ui/widgets/board_marks.gd")
 const ChipFlight := preload("res://ui/widgets/chip_flight.gd")
+const PotMath := preload("res://ui/table/pot_math.gd")
 const SafeArea := preload("res://ui/theme/safe_area.gd")
 const Sfx := preload("res://ui/app/sfx.gd")
 const ListIcon := preload("res://ui/widgets/list_icon_button.gd")
@@ -52,6 +53,8 @@ const MY_CARD: Vector2 = Vector2(56, 78)
 const THEIR_BACK: Vector2 = Vector2(18, 26)
 const THEIR_FACE: Vector2 = Vector2(30, 42)
 const MARGIN: float = 12.0
+const BANNER_LINES: int = 2   # linhas do aviso de fim de mão (potes paralelos)
+const BANNER_STEP: float = 24.0   # entre as linhas pequenas do aviso
 const COLUMN_W: float = 136.0
 const SHEET_W: float = 248.0
 ## Distância mínima entre o anúncio e o botão mais alto (regra das lojas).
@@ -96,7 +99,7 @@ var _history: Button = null
 var _score: Button = null
 var _my_turn: bool = false
 var _warned: bool = false
-var _banner: AmountView = null
+var _banners: Array[AmountView] = []   # fim da mão: uma linha por ganhador (ou "dividem")
 var _prompt: VBoxContainer = null
 var _prompt_text: Label = null
 var _prompt_main: ActionBar.ActionButton = null
@@ -130,6 +133,7 @@ var _turn_left_ms: int = -1
 var _turn_seat: int = -1
 var _shown_board: int = 0         # cartas comunitárias já na tela (para animar as novas)
 var _last_bets: Dictionary = {}   # posição -> ponto da aposta na tela (para irem ao pote)
+var _last_amounts: Dictionary = {} # posição -> valor dessa aposta
 
 
 func _ready() -> void:
@@ -193,10 +197,12 @@ func _ready() -> void:
 	_waiting.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_waiting.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	add_child(_waiting)
-	_banner = AmountView.new()
-	_banner.big = true
-	_banner.visible = false
-	add_child(_banner)
+	for i in BANNER_LINES:
+		var banner: AmountView = AmountView.new()
+		banner.big = true
+		banner.visible = false
+		add_child(banner)
+		_banners.append(banner)
 	_exit = Button.new()
 	_exit.text = "Sair"
 	_exit.theme_type_variation = "QuietButton"
@@ -447,11 +453,8 @@ func render(state: Dictionary) -> void:
 			_board[i].highlight = best.has(int(board[i]))
 		else:
 			_board[i].land()
-	var pot: int = int(table.get("pot", 0))
-	if not live:
-		pot = 0
-		for p: Dictionary in result.get("payouts", []):
-			pot += int(p.get("amount", 0))
+	# Só o que já foi recolhido: as apostas da rodada estão na frente de cada lugar.
+	var pot: int = PotMath.center(table)
 	_pot.visible = pot > 0
 	_pot.amount = pot
 	_pot.place_at(_pot_point())
@@ -618,25 +621,35 @@ func reactions_corner() -> Vector2:
 	return _react.position + Vector2(_react.size.x, -8.0)
 
 
-## Fim de mão: quem ganhou e quanto, embaixo das cartas comunitárias.
+## Fim de mão: quem ganhou e quanto, embaixo das cartas comunitárias. Pote dividido
+## numa linha só; potes paralelos ganhos por pessoas diferentes, uma linha para cada uma.
 func _show_banner(result: Dictionary, members: Dictionary) -> void:
-	var payouts: Array = result.get("payouts", [])
-	_banner.visible = not payouts.is_empty()
-	if payouts.is_empty():
-		return
-	var names: Array[String] = []
-	var total: int = 0
-	for payout: Dictionary in payouts:
-		var seat_index: int = int(payout.get("seat", -1))
-		total += int(payout.get("amount", 0))
-		var nick: String = "Você" if seat_index == _my_seat 			else String(members.get(seat_index, {}).get("nick", ""))
-		if nick != "" and not names.has(nick):
-			names.append(nick)
-	var who: String = names[0] if names.size() == 1 else 		", ".join(names.slice(0, names.size() - 1)) + " e " + names[-1]
-	var verb: String = "ganha" if names.size() == 1 else "dividem"
-	_banner.caption = "%s %s" % [who, verb]
-	_banner.amount = total
-	_banner.place_at(_banner_point())
+	var groups: Array = PotMath.groups(result.get("payouts", []), result.get("pots", []))
+	if groups.size() > BANNER_LINES:
+		# Mais ganhadores do que linhas: os menores valores ficam juntos na última.
+		var rest: Dictionary = {"seats": [], "amount": 0}
+		for group: Dictionary in groups.slice(BANNER_LINES - 1):
+			rest["seats"].append_array(group["seats"])
+			rest["amount"] = int(rest["amount"]) + int(group["amount"])
+		groups = groups.slice(0, BANNER_LINES - 1) + [rest]
+	for i in BANNER_LINES:
+		var banner: AmountView = _banners[i]
+		banner.visible = i < groups.size()
+		if not banner.visible:
+			continue
+		var group: Dictionary = groups[i]
+		# Várias linhas: menores, para caberem entre as cartas e a sua placa.
+		banner.big = groups.size() == 1
+		var names: Array[String] = []
+		for seat_index: Variant in group["seats"]:
+			var nick: String = "Você" if int(seat_index) == _my_seat 				else String(members.get(int(seat_index), {}).get("nick", ""))
+			if nick != "" and not names.has(nick):
+				names.append(nick)
+		var who: String = "" if names.is_empty() else (names[0] if names.size() == 1 			else ", ".join(names.slice(0, names.size() - 1)) + " e " + names[-1])
+		var verb: String = "ganha" if names.size() <= 1 else 			("dividem" if groups.size() == 1 else "ganham")
+		banner.caption = ("%s %s" % [who, verb]).strip_edges()
+		banner.amount = int(group["amount"])
+		banner.place_at(_banner_point(i, groups.size()))
 
 
 ## Abre a folha de aposta (usado nas fotos e pela própria barra).
@@ -770,8 +783,10 @@ func _board_center() -> Vector2:
 	return _table_center() + Vector2(0, 2)
 
 
-func _banner_point() -> Vector2:
-	return _board_center() + Vector2(0, BOARD_CARD.y / 2.0 + 24.0)
+func _banner_point(line: int = 0, lines: int = 1) -> Vector2:
+	if lines <= 1:
+		return _board_center() + Vector2(0, BOARD_CARD.y / 2.0 + 24.0)
+	return _board_center() + Vector2(0, BOARD_CARD.y / 2.0 + 16.0 + line * BANNER_STEP)
 
 
 func _pot_point() -> Vector2:
@@ -861,8 +876,12 @@ func _layout() -> void:
 	_score.position = Vector2(area.end.x - MARGIN - 40.0, area.position.y + MARGIN).round()
 	_react.size = Vector2(40, 40)
 	_react.position = Vector2(area.end.x - MARGIN - 40.0, area.end.y - MARGIN - 40.0).round()
-	if _banner.visible:
-		_banner.place_at(_banner_point())
+	var lines: int = 0
+	for banner: AmountView in _banners:
+		lines += 1 if banner.visible else 0
+	for i in _banners.size():
+		if _banners[i].visible:
+			_banners[i].place_at(_banner_point(i, lines))
 
 
 func _place_prompt() -> void:
@@ -920,6 +939,7 @@ func _animate(events: Array, table: Dictionary, board_count: int, live: bool) ->
 	if dealt:
 		_shown_board = 0
 		_last_bets.clear()
+		_last_amounts.clear()
 		_deal_cards()
 
 	var to_pot: Dictionary = {}
@@ -927,6 +947,16 @@ func _animate(events: Array, table: Dictionary, board_count: int, live: bool) ->
 		to_pot = _last_bets.duplicate()
 		for slot: int in paid:
 			to_pot[slot] = _bet_point(slot)
+		# A parte da aposta que ninguém pagou volta para o lugar; o resto vai ao pote.
+		var back: Dictionary = PotMath.refunds(events)
+		for seat_index: int in back:
+			var slot: int = _slot_of(seat_index)
+			if slot < 0:
+				continue
+			var start: Vector2 = to_pot.get(slot, _bet_point(slot))
+			_fly_chips(start, _slot_point(slot), 0.0, 0.3)
+			if int(back[seat_index]) >= int(_last_amounts.get(slot, 0)) 					and not paid.has(slot):
+				to_pot.erase(slot)
 		for slot: int in to_pot:
 			_fly_chips(_slot_point(slot) if not _last_bets.has(slot) else to_pot[slot],
 				_pot_point(), 0.0)
@@ -976,10 +1006,12 @@ func _animate(events: Array, table: Dictionary, board_count: int, live: bool) ->
 		_pot_fade(0.0, delay, 0.25)
 
 	_last_bets.clear()
+	_last_amounts.clear()
 	if live:
 		for slot in SLOTS:
 			if _bets[slot].visible:
 				_last_bets[slot] = _bet_point(slot)
+				_last_amounts[slot] = _bets[slot].amount
 
 
 ## Distribuição: duas voltas pela mesa, uma carta por vez, saindo do centro.
