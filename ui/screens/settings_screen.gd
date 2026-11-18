@@ -1,6 +1,7 @@
 extends "res://ui/screens/screen.gd"
 ## Configurações (SPEC 11.3): sons, vibração e silenciar reações. Cada troca vale na hora
-## e fica gravada no perfil.
+## e fica gravada no perfil. Embaixo, o link da política de privacidade (a Play pede o link
+## também dentro do app).
 
 signal back
 
@@ -8,12 +9,15 @@ const Profile := preload("res://ui/app/profile.gd")
 const ToggleRow := preload("res://ui/widgets/toggle_row.gd")
 const Sfx := preload("res://ui/app/sfx.gd")
 
+const PRIVACY_URL: String = "https://ralfrf.github.io/bora-poker/privacidade/"
+
 var profile: Profile = null
 
 var _title: Label = null
 var _sound: ToggleRow = null
 var _vibration: ToggleRow = null
 var _mute: ToggleRow = null
+var _privacy: Button = null
 var _done: Button = null
 
 
@@ -46,6 +50,12 @@ func _build() -> void:
 		profile.mute_reactions = on
 		_save())
 	add_child(_mute)
+	_privacy = Button.new()
+	_privacy.text = "Política de privacidade"
+	_privacy.theme_type_variation = "QuietButton"
+	_privacy.focus_mode = Control.FOCUS_NONE
+	_privacy.pressed.connect(func() -> void: OS.shell_open(PRIVACY_URL))
+	add_child(_privacy)
 	_done = action_button("Pronto", true)
 	_done.pressed.connect(func() -> void: back.emit())
 	add_child(_done)
@@ -66,6 +76,7 @@ func _layout() -> void:
 		place(row, Rect2(b.position.x, y, w, ToggleRow.ROW_H))
 		row.queue_redraw()
 		y += ToggleRow.ROW_H + 10.0
+	place(_privacy, Rect2(b.position.x, y, _privacy.get_combined_minimum_size().x, 34))
 	place(_done, Rect2(col.position.x, col.end.y - BUTTON_H, col.size.x, BUTTON_H))
 
 
