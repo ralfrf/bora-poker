@@ -6,12 +6,17 @@ extends RefCounted
 ## sonda insiste por até 2 minutos e, sem resposta, o servidor fica DOWN ("Em
 ## manutenção"). Respondendo, repete a pergunta de tempos em tempos.
 ##
+## O endereço do servidor não encontrado vira OFFLINE na hora ("Sem internet"), sem
+## esperar os 2 minutos: o Render, mesmo dormindo, sempre tem o endereço. Recusar a
+## conexão não conta, porque um servidor parado também recusa. Sem internet a sonda
+## tenta a cada 2 s e, quando a internet volta, os 2 minutos contam do zero.
+##
 ## Sem nós: quem usa chama poll() a cada quadro. O relógio é injetável.
 
 const Clock := preload("res://server/clock.gd")
 const Protocol := preload("res://server/protocol.gd")
 
-enum State { ASKING, WAKING, READY, DOWN, OLD }
+enum State { ASKING, WAKING, READY, DOWN, OLD, OFFLINE }
 
 const DEFAULT_URL: String = "wss://bora-poker.onrender.com"
 const WAKE_NOTICE_MS: int = 3000
@@ -105,10 +110,17 @@ func poll() -> void:
 			_begin(now)
 		return
 	if now - _attempt_at > ATTEMPT_MS:
-		_failed(now)
+		# 20 s procurando o endereço: a rede não tem saída.
+		if _http.get_status() == HTTPClient.STATUS_RESOLVING:
+			_offline(now)
+		else:
+			_failed(now)
 		return
 	var error: Error = _http.poll()
 	var status: int = _http.get_status()
+	if status == HTTPClient.STATUS_CANT_RESOLVE:
+		_offline(now)
+		return
 	match status:
 		HTTPClient.STATUS_RESOLVING, HTTPClient.STATUS_CONNECTING, HTTPClient.STATUS_REQUESTING:
 			if error != OK:
@@ -197,11 +209,27 @@ func _finish(now: int) -> void:
 	_next_at = 1 << 62 if once else now + REFRESH_MS
 
 
+## O endereço não foi encontrado: sem internet. Tenta de novo logo e, quando a internet
+## voltar, os 2 minutos até "Em manutenção" contam do zero.
+func _offline(now: int) -> void:
+	if once:
+		_failed(now)
+		return
+	_close_attempt()
+	_answered = false
+	_started = now
+	state = State.OFFLINE
+	_next_at = now + RETRY_MS
+
+
 func _failed(now: int) -> void:
 	_close_attempt()
 	if once:
 		_next_at = 1 << 62
 		return
+	if state == State.OFFLINE:
+		# A internet voltou e o servidor ainda não respondeu: acordando.
+		state = State.WAKING
 	if _answered:
 		# Respondia e parou (reiniciou, ou foi suspenso): volta a "acordando" e conta de
 		# novo os 2 minutos até "Em manutenção".

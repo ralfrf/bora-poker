@@ -4,7 +4,8 @@ extends Control
 ##   --screen=profile | profile_edit | home | setup | setup_t | game | showdown |
 ##            rebuy | watching | ranking | history | result | result_t | live | settings |
 ##            help | rules | reactions | spectator | paused | held | held_seat | score |
-##            servers | servers_wake | servers_full | servers_advanced | remote_rooms |
+##            servers | servers_wake | servers_full | servers_down | servers_offline |
+##            servers_advanced | remote_rooms |
 ##            remote_password | remote_wake | remote_empty | remote_setup | remote_waiting
 ##   --seed=N  (game e showdown: muda a mesa sorteada)
 ##   --felt=rubi  (a mesa escolhida: telas de criar, sala de espera e partida offline)
@@ -113,7 +114,7 @@ func _ready() -> void:
 			screen = OfflineSetupScreen.new(profile, true)
 		"waiting":
 			screen = WaitingScreen.new(_waiting_game(seats))
-		"servers", "servers_wake", "servers_full", "servers_advanced":
+		"servers", "servers_wake", "servers_full", "servers_down", "servers_offline", "servers_advanced":
 			# Etapa 5, parte C: servidores com a lotação (sem ir à internet).
 			profile.server_url = ""
 			screen = ServersScreen.new(profile)
@@ -136,6 +137,10 @@ func _ready() -> void:
 		match screen_name:
 			"servers_wake":
 				probe.pretend(LoadProbe.State.WAKING)
+			"servers_offline":
+				probe.pretend(LoadProbe.State.OFFLINE)
+			"servers_down":
+				probe.pretend(LoadProbe.State.DOWN)
 			"servers_full":
 				probe.pretend(LoadProbe.State.READY, 100, true)
 			_:

@@ -324,6 +324,6 @@ func has_reactions() -> bool:
 ## frase do anúncio aparece mesmo antes de haver anúncio de verdade (pedido do dono,
 ## 18/11/2026).
 static func wake_tip() -> String:
-	return "O Bora Poker é novo e está em desenvolvimento, melhorando a cada versão. " \
-		+ "Pode levar segundos para o servidor aparecer. Enquanto isso, se quiser, " \
+	return "O Bora Poker está em desenvolvimento, melhorando a cada versão. " \
+		+ "Pode levar alguns segundos para o servidor aparecer. Enquanto isso, se quiser, " \
 		+ "assista a um anúncio e ajude a melhorar os nossos servidores."

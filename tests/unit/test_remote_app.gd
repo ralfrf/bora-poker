@@ -384,6 +384,26 @@ func test_remote_game_does_not_create_twice() -> void:
 	host.ws.stop()
 
 
+func test_load_probe_offline_when_address_not_found() -> void:
+	# .invalid nunca existe (RFC 2606): é o que o celular vê sem internet.
+	var probe: LoadProbe = LoadProbe.new("wss://bora-poker-teste.invalid")
+	assert_true(_spin(func() -> void: probe.poll(),
+		func() -> bool: return probe.state == LoadProbe.State.OFFLINE, 15000),
+		"endereço não encontrado: sem internet, sem esperar os 2 minutos")
+	# A internet volta: a próxima tentativa encontra o servidor e mostra a lotação.
+	var host: RemoteHost = RemoteHost.new(null, {"room": FAST})
+	assert_eq(host.listen(0, "127.0.0.1"), OK)
+	probe.set("_host", "127.0.0.1")
+	probe.set("_port", host.ws.port)
+	probe.set("_tls", false)
+	assert_true(_spin(func() -> void:
+		host.tick()
+		probe.poll(), func() -> bool: return probe.state == LoadProbe.State.READY, 6000),
+		"internet de volta: lotação")
+	probe.close()
+	host.ws.stop()
+
+
 func test_load_probe_back_to_waking_when_server_stops() -> void:
 	var host: RemoteHost = RemoteHost.new(null, {"room": FAST})
 	assert_eq(host.listen(0, "127.0.0.1"), OK)

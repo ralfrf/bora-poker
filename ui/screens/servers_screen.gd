@@ -127,6 +127,8 @@ func _refresh() -> void:
 				first.badge = "%d%%" % probe.pct
 		LoadProbe.State.DOWN:
 			first.detail = "Em manutenção. Confira a internet do celular e tente de novo mais tarde."
+		LoadProbe.State.OFFLINE:
+			first.detail = "Sem internet. Confira o Wi-Fi ou os dados móveis."
 		LoadProbe.State.OLD:
 			first.detail = "Atualize o app para usar este servidor"
 	if profile.server_url != "" and LoadProbe.normalize(profile.server_url) != LoadProbe.DEFAULT_URL:
