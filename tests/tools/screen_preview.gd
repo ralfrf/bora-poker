@@ -9,7 +9,8 @@ extends Control
 ##            remote_password | remote_wake | remote_empty | remote_setup | remote_waiting
 ##   --seed=N  (game e showdown: muda a mesa sorteada)
 ##   --felt=rubi  (a mesa escolhida: telas de criar, sala de espera e partida offline)
-##   --avatar=N  (o avatar do perfil de exemplo)  --picker  (remote_waiting: abre a escolha de avatar)
+##   --avatar=N  (o avatar de Rafa: perfil, mesa e sala de espera)  --premium  (Bia e o
+##   pódio com retratos exclusivos, para as capturas da loja)  --picker  (remote_waiting: abre a escolha de avatar)
 ##   --ads  (rebuy: a oferta de retorno com anúncio, como no Wi-Fi e à distância)
 ##   shop: a Loja. --owned=mesa_rubi,avatares_2 (compras de exemplo, feitas hoje) e
 ##         --prices (preços de exemplo, como se a loja do celular respondesse);
@@ -42,6 +43,13 @@ const FAST: Dictionary = {"hand_gap_ms": 0, "showdown_gap_ms": 0, "bot_min_ms": 
 
 var _seed: int = 1
 var _felt: String = "salao"
+## Avatar de Rafa pedido por --avatar (-1: o de cada tela).
+var _rafa_avatar: int = -1
+## --premium: as outras pessoas de exemplo (Bia e o pódio) com retratos exclusivos, para
+## as capturas da loja. Homens de 10 a 18, mulheres de 19 a 28 (como nos bots).
+var _premium: bool = false
+const PREMIUM_BIA: int = 21
+const PREMIUM_RESULT: Array[int] = [12, 20, 14, 23, 16, 25]
 
 
 func _ready() -> void:
@@ -60,6 +68,9 @@ func _ready() -> void:
 			_felt = arg.get_slice("=", 1)
 		elif arg.begins_with("--avatar="):
 			avatar = int(arg.get_slice("=", 1))
+			_rafa_avatar = avatar
+		elif arg == "--premium":
+			_premium = true
 		elif arg == "--picker":
 			picker = true
 	var profile: Profile = Profile.new()
@@ -204,12 +215,12 @@ func _remote_waiting(seats: int) -> RemoteGame:
 	set_meta("remote_host", remote_host)
 	var address: String = "ws://127.0.0.1:%d" % remote_host.ws.port
 	var owner_game: RemoteGame = RemoteGame.new()
-	owner_game.open(address, "Rafa", 4, "aparelho-foto")
+	owner_game.open(address, "Rafa", _rafa(4), "aparelho-foto")
 	var choice: Dictionary = OfflineOptions.clean({"seats": seats})
 	choice["felt"] = _felt
 	owner_game.create(OfflineOptions.build_room(choice), "2580")
 	var guest: RemoteGame = RemoteGame.new()
-	guest.open(address, "Bia", 2, "aparelho-bia")
+	guest.open(address, "Bia", PREMIUM_BIA if _premium else 2, "aparelho-bia")
 	for _i in 400:
 		remote_host.tick()
 		owner_game.update()
@@ -258,11 +269,11 @@ func _waiting_game(seats: int) -> WifiGame:
 	var options: Dictionary = OfflineOptions.build_room(OfflineOptions.clean({"seats": seats}))
 	options["felt"] = _felt
 	var host: WifiGame = WifiGame.new()
-	host.host("Rafa", 4, "aparelho-foto", options, FAST, Callable(),
+	host.host("Rafa", _rafa(4), "aparelho-foto", options, FAST, Callable(),
 		["127.0.0.1"] as Array[String], 0, 47899)
 	host.host_ip = "192.168.0.23"
 	var guest: WifiGame = WifiGame.new()
-	guest.join("127.0.0.1", host.port, "Bia", 2, "aparelho-bia")
+	guest.join("127.0.0.1", host.port, "Bia", PREMIUM_BIA if _premium else 2, "aparelho-bia")
 	for _i in 200:
 		host.update()
 		guest.update()
@@ -285,7 +296,7 @@ func _game(kind: String, seats: int, watching: bool = false, ranking: bool = fal
 	var choice: Dictionary = OfflineOptions.clean({"seats": seats, "stack": 0,
 		"blinds": 3})
 	choice["felt"] = _felt
-	game.begin("Rafa", 1, "aparelho-foto", OfflineOptions.build(choice))
+	game.begin("Rafa", _rafa(1), "aparelho-foto", OfflineOptions.build(choice))
 	var target: Dictionary = {}
 	for i in 6000:
 		clock.advance(200)
@@ -364,7 +375,8 @@ func _result(tournament: bool) -> Control:
 	var nets: Array[int] = [1250, 640, -200, -500, -540, -650]
 	var places: Array[int] = [2, 1, 3, 4, 5, 6]
 	for i in nicks.size():
-		members.append({"id": "p%d" % i, "nick": nicks[i], "avatar": i})
+		members.append({"id": "p%d" % i, "nick": nicks[i],
+			"avatar": (_rafa(PREMIUM_RESULT[0]) if i == 0 else PREMIUM_RESULT[i]) if _premium else i})
 		rows.append({"id": "p%d" % i, "nick": nicks[i], "seat": i,
 			"chips": (3000 if tournament else 2000) + nets[i], "held": 0, "net": nets[i],
 			"place": places[i] if tournament else 0, "rebuys": 0})
@@ -377,3 +389,7 @@ func _result(tournament: bool) -> Control:
 		"podium": rows.slice(0, 3) if tournament else []}
 	return ResultScreen.new(final, members, "p0")
 
+
+## O avatar de Rafa: o de --avatar, se veio; senão o padrão da tela.
+func _rafa(fallback: int) -> int:
+	return _rafa_avatar if _rafa_avatar >= 0 else fallback
