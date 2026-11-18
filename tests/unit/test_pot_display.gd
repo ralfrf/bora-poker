@@ -144,3 +144,32 @@ func test_history_keeps_who_won_each_pot() -> void:
 	# Registro antigo, sem os potes: cada um com o seu valor.
 	assert_eq(PotMath.groups([{"seat": 2, "amount": 30}, {"seat": 1, "amount": 70}], []),
 		[{"seats": [1], "amount": 70}, {"seats": [2], "amount": 30}])
+
+
+func test_side_pots_are_separated_in_the_center() -> void:
+	# 0 foi all-in com 100 antes do flop; 1 e 2 seguem e 1 aposta 200 no flop.
+	var table: Table = Table.new()
+	assert_eq(table.configure({"format": Table.CLASSIC}), "")
+	for i in 3:
+		assert_eq(table.add_player(i, "j%d" % i), "")
+	table.seat_at(0).stack = 100
+	assert_true(table.start_hand({"seed": 4, "button": 2})["ok"])
+	while table.hand.street == Hand.PREFLOP:
+		var seat: int = table.hand.to_act
+		var legal: Dictionary = table.hand.legal_actions()
+		if seat == 0:
+			_act(table, 0, Hand.RAISE if legal["can_raise"] else Hand.CALL, 100 if legal["can_raise"] else 0)
+		elif legal["can_check"]:
+			_act(table, seat, Hand.CHECK)
+		else:
+			_act(table, seat, Hand.CALL)
+	var view: Dictionary = _view(table)
+	assert_eq(PotMath.center_pots(view), [300], "sem aposta paralela ainda: um pote só")
+	_act(table, table.hand.to_act, Hand.BET, 200)
+	view = _view(table)
+	assert_eq(PotMath.center_pots(view), [300], "a aposta nova não entra nas pilhas do centro")
+	assert_eq(PotMath.total(view), 500, "o total do \"Pote\" inclui a aposta da rodada")
+	_act(table, table.hand.to_act, Hand.CALL)
+	view = _view(table)
+	assert_eq(PotMath.center_pots(view), [300, 400], "recolhida, vira o pote paralelo")
+	assert_eq(PotMath.total(view), 700)

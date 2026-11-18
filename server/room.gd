@@ -424,6 +424,8 @@ func handle(member_id: String, message: Dictionary) -> void:
 		Protocol.REACT:
 			_react(member, message)
 			return
+		Protocol.SHOW:
+			problem = _show_cards(member)
 		Protocol.OWNER:
 			problem = _owner_command(member, message)
 		_:
@@ -808,6 +810,17 @@ func _react(member: Member, message: Dictionary) -> void:
 	for other: Member in members.values():
 		if not other.is_bot:
 			_send_to(other, out)
+
+
+## Quem levou o pote sem showdown mostra as cartas, entre o fim da mão e a seguinte.
+func _show_cards(member: Member) -> String:
+	if member.seat < 0 or table.hand == null or table.hand_in_progress() 			or _hand_ids.get(member.seat, "") != member.id:
+		return "não há cartas para mostrar"
+	var response: Dictionary = table.hand.show_cards(member.seat)
+	if not response["ok"]:
+		return response["error"]
+	_broadcast(response["events"])
+	return ""
 
 
 ## Wi-Fi (SPEC 6.4): o anfitrião sumiu por mais de 10 s no meio de uma mão; ele desiste

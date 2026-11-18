@@ -27,6 +27,8 @@ signal reactions_requested
 signal sit_requested
 ## Quem voltou com fichas guardadas toca em "Voltar à mesa" (reabre a pergunta).
 signal return_requested
+## Quem levou o pote sem showdown toca em "Mostrar cartas".
+signal show_requested
 
 const CardView := preload("res://ui/widgets/card_view.gd")
 const SeatView := preload("res://ui/widgets/seat_view.gd")
@@ -54,7 +56,9 @@ const THEIR_BACK: Vector2 = Vector2(18, 26)
 const THEIR_FACE: Vector2 = Vector2(30, 42)
 const MARGIN: float = 12.0
 const BANNER_LINES: int = 2   # linhas do aviso de fim de mão (potes paralelos)
-const BANNER_STEP: float = 24.0   # entre as linhas pequenas do aviso
+const BANNER_STEP: float = 24.0
+const POT_VIEWS: int = 3   # pilhas no centro: principal e até 2 paralelos (o resto junto)
+const POT_GAP: float = 6.0   # entre as linhas pequenas do aviso
 const COLUMN_W: float = 136.0
 const SHEET_W: float = 248.0
 ## Distância mínima entre o anúncio e o botão mais alto (regra das lojas).
@@ -87,7 +91,10 @@ var _seats: Dictionary = {}     # posição -> SeatView
 var _hole: Dictionary = {}      # posição -> [CardView, CardView]
 var _bets: Dictionary = {}      # posição -> AmountView
 var _board: Array[CardView] = []
-var _pot: AmountView = null
+var _pot: Control = null              # as pilhas do centro (some junto na animação)
+var _pot_views: Array[AmountView] = [] # pote principal e paralelos
+var _pot_amounts: Array[int] = []
+var _total: AmountView = null          # "Pote: X", com as apostas da rodada
 var _mine: Array[CardView] = []
 var _bar: ActionBar = null
 var _waiting: Label = null
@@ -156,9 +163,18 @@ func _ready() -> void:
 		card.size = BOARD_CARD
 		add_child(card)
 		_board.append(card)
-	_pot = AmountView.new()
-	_pot.big = true
+	_total = AmountView.new()
+	_total.caption = "Pote"
+	_total.visible = false
+	add_child(_total)
+	_pot = Control.new()
+	_pot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_pot)
+	for i in POT_VIEWS:
+		var pot_view: AmountView = AmountView.new()
+		pot_view.visible = false
+		_pot.add_child(pot_view)
+		_pot_views.append(pot_view)
 	for slot in SLOTS:
 		if slot > 0:
 			var pair: Array[CardView] = []
@@ -404,7 +420,9 @@ func render(state: Dictionary) -> void:
 			fraction = float(_turn_left_ms) / _turn_total_ms
 		var tag: String = _tags.get(seat_index, "")
 		if shown.has(seat_index):
-			tag = String(shown[seat_index].get("name", tag))
+			# Sem nome (mostrou antes do flop): fica a última ação.
+			var hand_name: String = String(shown[seat_index].get("name", ""))
+			tag = hand_name if hand_name != "" else tag
 		elif member.get("left", false) or not member.get("connected", true):
 			tag = _countdown_tag(seat_index, member)
 			counting[seat_index] = true
@@ -454,10 +472,7 @@ func render(state: Dictionary) -> void:
 		else:
 			_board[i].land()
 	# Só o que já foi recolhido: as apostas da rodada estão na frente de cada lugar.
-	var pot: int = PotMath.center(table)
-	_pot.visible = pot > 0
-	_pot.amount = pot
-	_pot.place_at(_pot_point())
+	_show_pots(table)
 
 	var my_cards: Array = you.get("cards", [])
 	var my_entry: Dictionary = seats.get(_my_seat, {})
@@ -508,6 +523,8 @@ func _show_column(table: Dictionary, you: Dictionary, me: Dictionary,
 			kind = "sit"
 		elif _my_seat < 0 and you.get("return_offer", {}).get("seat", false):
 			kind = "return"
+		elif _can_show(table):
+			kind = "show"
 	_bar.visible = not legal.is_empty()
 	_prompt.visible = kind != ""
 	_waiting.visible = legal.is_empty() and kind == ""
@@ -548,6 +565,11 @@ func _show_column(table: Dictionary, you: Dictionary, me: Dictionary,
 			_prompt_text.text = "Suas fichas estão guardadas. Há um lugar livre."
 			_prompt_main.set_content("Voltar à mesa", -1)
 			_prompt_alt.visible = false
+		"show":
+			# Como nos sites: quem levou sem showdown pode mostrar, se quiser.
+			_prompt_text.text = "Todos desistiram. Você levou o pote."
+			_prompt_main.set_content("Mostrar cartas", -1)
+			_prompt_alt.visible = false
 	_place_prompt()
 
 
@@ -577,6 +599,22 @@ func _on_prompt(main: bool) -> void:
 			sit_requested.emit()
 		"return":
 			return_requested.emit()
+		"show":
+			show_requested.emit()
+
+
+## Você levou o pote porque todos desistiram e ainda não mostrou as cartas.
+func _can_show(table: Dictionary) -> bool:
+	if _my_seat < 0 or table.get("live", false):
+		return false
+	var result: Dictionary = table.get("result", {})
+	var payouts: Array = result.get("payouts", [])
+	if result.get("showdown", false) or result.get("cancelled", false) or payouts.size() != 1 			or int(payouts[0].get("seat", -1)) != _my_seat:
+		return false
+	for entry: Dictionary in result.get("shown", []):
+		if int(entry.get("seat", -1)) == _my_seat:
+			return false
+	return true
 
 
 ## Relógios parados: mesa pausada pelo dono, ou esperando o anfitrião voltar.
@@ -789,6 +827,47 @@ func _banner_point(line: int = 0, lines: int = 1) -> Vector2:
 	return _board_center() + Vector2(0, BOARD_CARD.y / 2.0 + 16.0 + line * BANNER_STEP)
 
 
+## As pilhas do centro, como nos sites: um pote só, grande; com potes paralelos, uma
+## pilha menor para cada um, lado a lado ("Principal" e "Paralelo"; com três, sem nome).
+## Embaixo das cartas comunitárias, "Pote" com o total da mão, inclusive as apostas.
+func _show_pots(table: Dictionary) -> void:
+	var amounts: Array[int] = PotMath.center_pots(table)
+	if amounts.size() > POT_VIEWS:
+		var extra: int = 0
+		for amount in amounts.slice(POT_VIEWS - 1):
+			extra += amount
+		amounts = amounts.slice(0, POT_VIEWS - 1)
+		amounts.append(extra)
+	_pot_amounts = amounts
+	for i in POT_VIEWS:
+		var pot_view: AmountView = _pot_views[i]
+		pot_view.visible = i < amounts.size()
+		if not pot_view.visible:
+			continue
+		pot_view.big = amounts.size() == 1
+		# Três pilhas não cabem com nome: o principal é o da esquerda.
+		pot_view.caption = "" if amounts.size() != 2 else ("Principal" if i == 0 else "Paralelo")
+		pot_view.amount = amounts[i]
+	var total: int = PotMath.total(table)
+	_total.visible = total > 0
+	_total.amount = total
+	_place_pots()
+
+
+func _place_pots() -> void:
+	var count: int = _pot_amounts.size()
+	var width: float = 0.0
+	for i in count:
+		width += _pot_views[i].get_combined_minimum_size().x
+	width += POT_GAP * maxi(count - 1, 0)
+	var x: float = _pot_point().x - width / 2.0
+	for i in count:
+		var w: float = _pot_views[i].get_combined_minimum_size().x
+		_pot_views[i].place_at(Vector2(x + w / 2.0, _pot_point().y))
+		x += w + POT_GAP
+	_total.place_at(_banner_point())
+
+
 func _pot_point() -> Vector2:
 	return _board_center() + Vector2(0, -BOARD_CARD.y / 2.0 - 24.0)
 
@@ -848,7 +927,7 @@ func _layout() -> void:
 	for i in 5:
 		_board[i].position = (board_center + Vector2(-total / 2.0 + i * (BOARD_CARD.x + gap),
 			-BOARD_CARD.y / 2.0)).round()
-	_pot.place_at(_pot_point())
+	_place_pots()
 	for slot in SLOTS:
 		var seat: SeatView = _seats[slot]
 		seat.side = _side_of(slot)

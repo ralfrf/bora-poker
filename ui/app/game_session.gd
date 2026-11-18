@@ -147,6 +147,11 @@ func has_reactions() -> bool:
 	return false
 
 
+## Mostra as cartas depois de levar o pote sem showdown.
+func show_cards() -> void:
+	send({"t": Protocol.SHOW})
+
+
 ## Manda uma reação (índice em Protocol.REACTIONS).
 func react(index: int) -> void:
 	send({"t": Protocol.REACT, "r": index})

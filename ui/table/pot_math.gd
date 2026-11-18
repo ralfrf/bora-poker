@@ -2,6 +2,49 @@ extends RefCounted
 ## Contas do pote para a tela, sem nós: o que aparece no centro da mesa, o que volta
 ## para quem apostou e quem leva quanto no fim da mão. Usado pela mesa e pelo histórico.
 
+const Pots := preload("res://engine/pots.gd")
+
+
+## "Pote: X" no centro, como nos sites de poker: tudo o que está na mesa na mão em
+## andamento, inclusive as apostas da rodada. Fora da mão, 0 (o aviso diz quem levou).
+static func total(table: Dictionary) -> int:
+	return int(table.get("pot", 0)) if table.get("live", false) else 0
+
+
+## As pilhas de fichas do centro, do pote principal para os paralelos. Durante a mão, só
+## o que já foi recolhido das rodadas anteriores, separado como o motor separa os potes;
+## no fim, os potes entregues. Potes vazios não aparecem.
+static func center_pots(table: Dictionary) -> Array[int]:
+	var amounts: Array[int] = []
+	if table.get("live", false):
+		var entries: Array = []
+		for entry: Dictionary in table.get("seats", []):
+			if not entry.get("in_hand", false):
+				continue
+			var bet: int = int(entry.get("bet", 0))
+			# Quem foi all-in nesta rodada ainda não fecha pote: a aposta dele não foi recolhida.
+			entries.append({"seat": int(entry["seat"]), "total": int(entry.get("total", 0)) - bet,
+				"folded": entry.get("folded", false),
+				"all_in": entry.get("all_in", false) and bet == 0})
+		var sum: int = 0
+		for pot: Dictionary in Pots.build(entries):
+			if int(pot["amount"]) > 0:
+				amounts.append(int(pot["amount"]))
+				sum += int(pot["amount"])
+		# Fichas de quem já saiu da mesa no meio da mão (o lugar não aparece mais) ficam
+		# no pote principal: a soma das pilhas é sempre o que foi recolhido.
+		var missing: int = center(table) - sum
+		if missing > 0:
+			if amounts.is_empty():
+				amounts.append(missing)
+			else:
+				amounts[0] += missing
+	else:
+		for pot: Dictionary in table.get("result", {}).get("pots", []):
+			if int(pot.get("amount", 0)) > 0:
+				amounts.append(int(pot["amount"]))
+	return amounts
+
 
 ## Fichas no centro da mesa. Durante a mão, só o que já foi recolhido das rodadas
 ## anteriores: as apostas da rodada aparecem na frente de cada lugar e não contam duas

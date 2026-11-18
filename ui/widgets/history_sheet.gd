@@ -262,7 +262,9 @@ func _show_detail(record: Dictionary) -> void:
 		_detail.add_child(_label("Mão cancelada: as fichas voltaram para cada um.", "SmallLabel"))
 	var shown_names: Dictionary = {}
 	for entry: Dictionary in record.get("shown", []):
-		shown_names[int(entry["seat"])] = String(entry["name"])
+		# Quem mostrou antes do flop, depois de todos desistirem, não tem nome de mão.
+		if String(entry["name"]) != "":
+			shown_names[int(entry["seat"])] = String(entry["name"])
 	var opened: Dictionary = {}
 	for entry: Dictionary in record.get("revealed", []) + record.get("shown", []):
 		var seat: int = int(entry["seat"])

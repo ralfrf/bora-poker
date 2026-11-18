@@ -23,6 +23,7 @@ const PING: String = "ping"                 ## {}: batimento, a cada 2 s na rede
 const RETURN_CHOICE: String = "return_choice"   ## {keep}: volta com as fichas de antes ou as iniciais
 const PROFILE: String = "profile"           ## {avatar}: troca o avatar (só na sala de espera)
 const REACT: String = "react"               ## {r}: reação (índice em REACTIONS), só quem está sentado
+const SHOW: String = "show"                 ## {}: quem levou o pote sem showdown mostra as cartas
 const RESUME_ROOM: String = "resume_room"   ## {room, summary, password}: volta depois de um reinício do
                                             ## servidor com o resumo assinado (SPEC 9.4); sala viva = join_room
 

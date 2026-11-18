@@ -25,7 +25,7 @@ const Hand := preload("res://engine/hand.gd")
 
 const LIMIT: int = 50
 const HAND_EVENTS: Array[String] = ["blind", "deal", "action", "street", "reveal", "refund",
-	"showdown", "end", "cancel"]
+	"showdown", "end", "cancel", "show"]
 
 var _hands: Array[Dictionary] = []   # terminadas, da mais antiga à mais recente
 var _holes: Array[Dictionary] = []   # em paralelo: {id: cartas}
@@ -43,6 +43,13 @@ func note(events: Array, table: Table, ids: Dictionary, names: Dictionary) -> vo
 		if (type == "blind" or type == "deal") and table.hand != null \
 				and (_open.is_empty() or int(_open["hand"]) != table.hand_number):
 			_begin(table, ids, names)
+		if type == "show":
+			# Depois do fim da mão: quem levou sem showdown mostrou as cartas.
+			if not _hands.is_empty() and table.hand != null 					and int(_hands[-1]["hand"]) == table.hand_number:
+				(_hands[-1]["shown"] as Array).append({"seat": int(event["seat"]),
+					"cards": (event["cards"] as Array).duplicate(), "name": String(event["name"]),
+					"best": (event["best"] as Array).duplicate()})
+			continue
 		if _open.is_empty():
 			continue
 		var streets: Array = _open["streets"]

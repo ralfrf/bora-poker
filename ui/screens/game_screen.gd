@@ -49,6 +49,7 @@ func _ready() -> void:
 	_table.score_requested.connect(open_score)
 	_table.reactions_requested.connect(open_reactions)
 	_table.sit_requested.connect(_on_sit)
+	_table.show_requested.connect(func() -> void: _game.show_cards())
 	_table.return_requested.connect(func() -> void:
 		_offer_seen = false
 		_check_offer(_game.last_state.get("you", {})))

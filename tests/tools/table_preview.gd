@@ -2,7 +2,8 @@ extends Control
 ## Prévia provisória das direções visuais no celular: a mesa de exemplo em tamanho
 ## real. Um toque fora dos botões alterna entre os temas de directions.gd (hoje só um).
 ## --table=rubi mostra uma mesa da Loja (ui/theme/tables.gd).
-## --sidepots mostra o fim de uma mão com potes paralelos ganhos por pessoas diferentes.
+## --sidepots mostra uma mão com potes paralelos (com --ended, o fim dela, ganhos por
+## pessoas diferentes).
 
 const Directions := preload("res://ui/theme/directions.gd")
 const Tables := preload("res://ui/theme/tables.gd")
@@ -13,6 +14,7 @@ const TableView := preload("res://ui/table/table_view.gd")
 var _index: int = 0
 var _board: int = 4
 var _sidepots: bool = false
+var _ended: bool = false
 var _table: TableView = null
 var _label: Label = null
 
@@ -41,6 +43,8 @@ func _ready() -> void:
 			_board = 3
 		elif arg == "--sidepots":
 			_sidepots = true
+		elif arg == "--ended":
+			_ended = true
 	_apply()
 	if sheet:
 		_table.open_bet_sheet()
@@ -57,14 +61,25 @@ func _apply() -> void:
 	var state: Dictionary = DemoState.make()
 	state["table"]["board"] = state["table"]["board"].slice(0, _board)
 	if _sidepots:
+		# Duda foi all-in no flop com 200; Tião acabou de ir all-in no turn.
 		var table: Dictionary = state["table"]
-		table["live"] = false
-		table["result"] = {"showdown": false, "payouts": [
-			{"seat": 2, "amount": 54000}, {"seat": 0, "amount": 70000},
-			{"seat": 6, "amount": 12000}],
-			"pots": [{"amount": 70000, "winners": [0]}, {"amount": 54000, "winners": [2]},
-			{"amount": 12000, "winners": [6]}]}
-		state["you"].erase("legal")
-		state["events"] = []
+		var totals: Dictionary = {0: 30000, 1: 4000, 2: 20000, 3: 30000, 4: 4000, 5: 72000,
+			6: 36000, 7: 4000, 8: 4000}
+		var pot: int = 0
+		for entry: Dictionary in table["seats"]:
+			entry["total"] = totals[int(entry["seat"])]
+			pot += int(entry["total"])
+		table["seats"][2]["stack"] = 0
+		table["seats"][2]["all_in"] = true
+		table["seats"][2]["bet"] = 0
+		table["pot"] = pot
+		if _ended:
+			table["live"] = false
+			table["result"] = {"showdown": false, "payouts": [
+				{"seat": 2, "amount": 116000}, {"seat": 0, "amount": 88000}],
+				"pots": [{"amount": 116000, "winners": [2]}, {"amount": 40000, "winners": [0]},
+				{"amount": 48000, "winners": [0]}]}
+			state["you"].erase("legal")
+			state["events"] = []
 	_table.render(state)
 	_label.text = ""

@@ -75,6 +75,7 @@ var started: bool = false
 var finished: bool = false
 var cancelled: bool = false
 var revealed: bool = false        ## showdown de all-in: as cartas foram abertas
+var aggressor: int = -1           ## quem apostou ou aumentou por último na rodada; -1 se ninguém
 var result: Dictionary = {}
 var load_error: String = ""       ## por que o último load_dict falhou
 var _deck: Array[int] = []
@@ -196,6 +197,7 @@ func apply_action(seat: int, action: String, amount: int = 0) -> Dictionary:
 			if increase >= min_raise:
 				min_raise = increase
 			current_bet = amount
+			aggressor = seat
 		_:
 			return _error("ação desconhecida")
 	player.seen_bet = current_bet
@@ -205,6 +207,34 @@ func apply_action(seat: int, action: String, amount: int = 0) -> Dictionary:
 		"to": player.bet, "all_in": player.all_in,
 	}]
 	_advance(seat + 1, events)
+	return _ok(events)
+
+
+## Quem levou o pote porque todos desistiram pode mostrar as cartas, se quiser (como nos
+## sites de poker; pedido do dono, 17/11/2026). Só depois do fim da mão, uma vez.
+## Devolve {ok, error, events}; o evento "show" leva as cartas para todos.
+func show_cards(seat: int) -> Dictionary:
+	if not finished or cancelled or bool(result.get("showdown", false)):
+		return _error("só quem levou o pote sem showdown mostra")
+	var payouts: Array = result.get("payouts", [])
+	if payouts.size() != 1 or int(payouts[0]["seat"]) != seat:
+		return _error("só quem levou o pote sem showdown mostra")
+	for entry: Dictionary in result.get("shown", []):
+		if int(entry["seat"]) == seat:
+			return _error("as cartas já foram mostradas")
+	var player: Player = player_at(seat)
+	var shown: Dictionary = {"seat": seat, "cards": player.cards.duplicate(), "score": 0,
+		"name": "", "best": []}
+	# Com o flop na mesa já há uma mão de 5 cartas para dar nome.
+	if board.size() >= 3:
+		var seven: Array[int] = _seven(player)
+		shown["score"] = HandEvaluator.score(seven)
+		shown["name"] = HandEvaluator.category_name(shown["score"])
+		shown["best"] = HandEvaluator.best_five(seven)
+	(result["shown"] as Array).append(shown)
+	var events: Array[Dictionary] = [{"type": "show", "seat": seat,
+		"cards": (shown["cards"] as Array).duplicate(), "name": shown["name"],
+		"best": (shown["best"] as Array).duplicate()}]
 	return _ok(events)
 
 
@@ -283,6 +313,7 @@ func to_dict() -> Dictionary:
 		"finished": finished,
 		"cancelled": cancelled,
 		"revealed": revealed,
+		"aggressor": aggressor,
 		"result": result.duplicate(true),
 		"deck": _deck.duplicate(),
 		"deck_pos": _deck_pos,
@@ -358,6 +389,12 @@ func _load(saved: Dictionary) -> String:
 	if (data["small_blind"] < 1 or data["big_blind"] < data["small_blind"]
 			or data["current_bet"] < 0 or data["min_raise"] < 1):
 		return "valores de aposta inválidos"
+	# Campo novo (17/11/2026): estados gravados antes dele não o têm.
+	var saved_aggressor: int = -1
+	if data.has("aggressor"):
+		if typeof(data["aggressor"]) != TYPE_INT 				or (data["aggressor"] != -1 and not by_seat.has(data["aggressor"])):
+			return "quem apostou por último está fora da mão"
+		saved_aggressor = data["aggressor"]
 	if data["finished"]:
 		if data["to_act"] != -1:
 			return "mão encerrada com alguém na vez"
@@ -383,6 +420,7 @@ func _load(saved: Dictionary) -> String:
 	finished = data["finished"]
 	cancelled = data["cancelled"]
 	revealed = data["revealed"]
+	aggressor = saved_aggressor
 	result = data["result"]
 	_deck.assign(data["deck"])
 	_deck_pos = data["deck_pos"]
@@ -493,6 +531,7 @@ func _close_round(events: Array[Dictionary]) -> void:
 
 func _deal_street(events: Array[Dictionary]) -> void:
 	street += 1
+	aggressor = -1
 	var cards: Array[int] = []
 	for i in (3 if street == FLOP else 1):
 		cards.append(_draw())
@@ -542,18 +581,14 @@ func _settle(showdown: bool, events: Array[Dictionary]) -> void:
 			payouts.append({"seat": player.seat, "amount": amount})
 		nets.append({"seat": player.seat, "amount": player.stack - player.start_stack})
 
-	# Mostram as cartas, como no poker de verdade: no showdown, todos que chegaram até o
-	# fim sem desistir, ganhando ou perdendo (pedido do dono, 17/11/2026). Quem desistiu
-	# não mostra; se todos os outros desistiram, não há showdown e ninguém mostra.
 	var shown: Array[Dictionary] = []
 	if showdown:
-		for player in players:
-			if player.folded:
-				continue
+		for seat: int in _show_order(scores, pots):
+			var player: Player = player_at(seat)
 			var seven: Array[int] = _seven(player)
-			var score: int = scores[player.seat]
+			var score: int = scores[seat]
 			shown.append({
-				"seat": player.seat,
+				"seat": seat,
 				"cards": player.cards.duplicate(),
 				"score": score,
 				"name": HandEvaluator.category_name(score),
@@ -574,6 +609,45 @@ func _settle(showdown: bool, events: Array[Dictionary]) -> void:
 	if showdown:
 		events.append({"type": "showdown", "shown": shown})
 	events.append({"type": "end", "pots": pots, "payouts": payouts})
+
+
+## Quem mostra no showdown, na ordem em que mostra (como nos sites de poker, com as
+## mãos perdedoras escondidas automaticamente; mudado a pedido do dono em 17/11/2026,
+## antes todos mostravam). Showdown de all-in: as cartas já estão abertas e todos
+## mostram. Senão, abre primeiro quem apostou ou aumentou por último na rodada final
+## (sem aposta nela, o primeiro à esquerda do botão) e segue pela mesa: cada um mostra
+## se a sua mão empata ou ganha da melhor já mostrada, ou se leva parte de algum pote
+## disputado; senão, esconde. Quem desistiu nunca mostra.
+func _show_order(scores: Dictionary, pots: Array[Dictionary]) -> Array[int]:
+	var live: Array[int] = []
+	for player in players:
+		if not player.folded:
+			live.append(player.seat)
+	var first: int = aggressor if live.has(aggressor) else -1
+	var order: Array[int] = []
+	if first >= 0:
+		order.append(first)
+		for seat in Positions.order_after(live, first):
+			if seat != first:
+				order.append(seat)
+	else:
+		order = Positions.order_after(live, button)
+	if revealed:
+		return order
+	var winners: Dictionary = {}
+	for pot: Dictionary in pots:
+		if (pot["eligible"] as Array).size() < 2:
+			continue
+		for seat: int in pot["winners"]:
+			winners[seat] = true
+	var shown: Array[int] = []
+	var best: int = -1
+	for seat in order:
+		var score: int = scores[seat]
+		if shown.is_empty() or score >= best or winners.has(seat):
+			shown.append(seat)
+			best = maxi(best, score)
+	return shown
 
 
 func _pot_entries() -> Array[Dictionary]:

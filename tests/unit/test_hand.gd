@@ -158,7 +158,10 @@ func test_deal_order_no_burn_and_showdown() -> void:
 	assert_true(result["showdown"])
 	assert_eq(result["payouts"], [{"seat": 0, "amount": 60}])
 	var shown: Array = result["shown"]
-	assert_eq(shown.size(), 3, "no showdown, todos que chegaram ao fim mostram (também quem perdeu)")
+	var order: Array = shown.map(func(entry: Dictionary) -> int: return entry["seat"])
+	# Ninguém apostou no river: abre o primeiro à esquerda do botão (KK); QQ perde dele e
+	# esconde; AA ganha e mostra.
+	assert_eq(order, [1, 0], "mostra quem ganha da melhor já aberta; a mão perdedora esconde")
 	var winner: Array = shown.filter(func(entry: Dictionary) -> bool: return entry["seat"] == 0)
 	assert_eq(winner.size(), 1)
 	assert_eq(winner[0]["name"], "Par")
@@ -642,8 +645,7 @@ func test_folded_players_never_show() -> void:
 	_do(hand, 0, Hand.FOLD)   # o par de ases desiste antes do flop
 	_check_down(hand)
 	var seats: Array = hand.result["shown"].map(func(entry: Dictionary) -> int: return entry["seat"])
-	seats.sort()
-	assert_eq(seats, [1, 2], "quem chegou ao fim mostra, ganhando ou perdendo; quem desistiu, não")
+	assert_eq(seats, [1], "KK abre e ganha; QQ perde e esconde; quem desistiu nunca mostra")
 
 
 func test_nobody_shows_when_everyone_else_folds() -> void:
@@ -653,3 +655,64 @@ func test_nobody_shows_when_everyone_else_folds() -> void:
 	assert_true(hand.finished)
 	assert_false(hand.result["showdown"])
 	assert_eq(hand.result["shown"], [], "sem showdown, ninguém mostra")
+
+
+func test_river_aggressor_shows_first_and_losers_muck() -> void:
+	# QQ aposta no river e os dois pagam: QQ abre primeiro, AA ganha e mostra, KK esconde.
+	var deck: Array[int] = _rigged(0, ["As Ah", "Ks Kh", "Qs Qh"], BOARD)
+	var hand: Hand = _start([1000, 1000, 1000], 0, deck)
+	_do(hand, 0, Hand.CALL)
+	_do(hand, 1, Hand.CALL)
+	_do(hand, 2, Hand.CHECK)
+	while hand.street < Hand.RIVER:
+		_do(hand, hand.to_act, Hand.CHECK)
+	while hand.to_act != 2:
+		_do(hand, hand.to_act, Hand.CHECK)
+	_do(hand, 2, Hand.BET, 100)
+	_do(hand, 0, Hand.CALL)
+	_do(hand, 1, Hand.CALL)
+	assert_true(hand.finished)
+	var order: Array = hand.result["shown"].map(func(entry: Dictionary) -> int: return entry["seat"])
+	assert_eq(order, [2, 0], "quem apostou por último abre; depois só quem ganha dele")
+
+
+func test_all_in_showdown_shows_everyone() -> void:
+	var deck: Array[int] = _rigged(0, ["As Ah", "Ks Kh", "Qs Qh"], BOARD)
+	var hand: Hand = _start([1000, 1000, 1000], 0, deck)
+	_do(hand, 0, Hand.RAISE, 1000)
+	_do(hand, 1, Hand.CALL)
+	_do(hand, 2, Hand.CALL)
+	assert_true(hand.finished and hand.revealed)
+	assert_eq(hand.result["shown"].size(), 3, "all-in: as cartas já estavam abertas, todos mostram")
+
+
+func test_winner_without_showdown_may_show() -> void:
+	var deck: Array[int] = _rigged(0, ["As Ah", "Ks Kh", "Qs Qh"], BOARD)
+	var hand: Hand = _start([1000, 1000, 1000], 0, deck)
+	assert_false(hand.show_cards(0)["ok"], "no meio da mão ninguém mostra")
+	_do(hand, 0, Hand.FOLD)
+	_do(hand, 1, Hand.FOLD)
+	assert_true(hand.finished)
+	assert_false(hand.show_cards(1)["ok"], "quem desistiu não mostra")
+	var response: Dictionary = hand.show_cards(2)
+	assert_true(response["ok"], str(response["error"]))
+	assert_eq(response["events"][0]["type"], "show")
+	assert_eq(Cards.list_to_text(response["events"][0]["cards"]), "Qs Qh")
+	assert_eq(response["events"][0]["name"], "", "antes do flop não há nome de mão")
+	assert_eq(hand.result["shown"].size(), 1)
+	assert_false(hand.show_cards(2)["ok"], "mostra uma vez só")
+
+
+func test_aggressor_survives_save_and_old_states_load() -> void:
+	var hand: Hand = _start([1000, 1000, 1000], 0)
+	_do(hand, 0, Hand.RAISE, 60)
+	var saved: Dictionary = JSON.parse_string(JSON.stringify(hand.to_dict()))
+	var copy: Hand = Hand.new()
+	assert_true(copy.load_dict(saved), copy.load_error)
+	assert_eq(copy.aggressor, 0)
+	saved.erase("aggressor")
+	var old: Hand = Hand.new()
+	assert_true(old.load_dict(saved), "estado gravado antes do campo novo: " + old.load_error)
+	assert_eq(old.aggressor, -1)
+	saved["aggressor"] = 7
+	assert_false(Hand.new().load_dict(saved), "quem apostou tem de estar na mão")

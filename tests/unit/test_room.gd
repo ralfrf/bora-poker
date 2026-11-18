@@ -556,3 +556,31 @@ func test_tournament_leaver_keeps_paying_blinds() -> void:
 		_act(room, who, Hand.FOLD)
 	assert_true(room.table.hand_number > 3)
 	assert_true(b != "")
+
+
+func test_winner_without_showdown_shows_cards() -> void:
+	# Com espera entre as mãos, quem levou porque o outro desistiu pode mostrar.
+	var room: Room = _room({}, {"hand_gap_ms": 4000})
+	var a: String = _join(room, "Ana")
+	var b: String = _join(room, "Bruno")
+	room.handle(a, {"t": Protocol.START})
+	var loser: String = _to_act(room)
+	var winner: String = b if loser == a else a
+	_act(room, loser, Hand.FOLD)
+	assert_false(room.table.hand_in_progress(), "a mão acabou e a próxima espera")
+	room.handle(loser, {"t": Protocol.SHOW})
+	assert_eq(_last(loser, Protocol.ERROR).get("code"), Protocol.E_REFUSED, "quem desistiu não mostra")
+	room.handle(winner, {"t": Protocol.SHOW})
+	var state: Dictionary = _last(loser, Protocol.STATE)
+	var events: Array = state["events"].filter(func(e: Dictionary) -> bool: return e["type"] == "show")
+	assert_eq(events.size(), 1, "todos recebem o evento")
+	var seat: int = room.members[winner].seat
+	var entry: Dictionary = state["table"]["seats"].filter(
+		func(e: Dictionary) -> bool: return int(e["seat"]) == seat)[0]
+	assert_eq(entry.get("cards", []).size(), 2, "as cartas do vencedor aparecem para o outro")
+	room.handle(winner, {"t": Protocol.SHOW})
+	assert_eq(_last(winner, Protocol.ERROR).get("code"), Protocol.E_REFUSED, "uma vez só")
+	room.handle(loser, {"t": Protocol.HISTORY})
+	var record: Dictionary = _last(loser, Protocol.HANDS)["hands"][0]
+	assert_eq(record["shown"].size(), 1, "o histórico guarda as cartas mostradas")
+	assert_eq(int(record["shown"][0]["seat"]), seat)
