@@ -151,9 +151,8 @@ func _refresh() -> void:
 	var tips: Array[String] = []
 	if _notice != "":
 		tips.append(_notice)
-	if _game.waking():
-		tips.append(RemoteGame.wake_tip())
-	elif _game.link == RemoteGame.Link.ONLINE and _rooms.is_empty():
+	tips.append(RemoteGame.wake_tip())
+	if _game.link == RemoteGame.Link.ONLINE and _rooms.is_empty():
 		tips.append("Crie uma sala e passe o código aos amigos, ou espere a sala deles " \
 			+ "aparecer aqui.")
 	_hint.text = "\n".join(tips)

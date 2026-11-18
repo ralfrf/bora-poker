@@ -17,7 +17,6 @@ extends "res://ui/app/game_session.gd"
 
 const WsClient := preload("res://net/ws_client.gd")
 const Clock := preload("res://server/clock.gd")
-const Ads := preload("res://ui/app/ads.gd")
 
 enum Link { CONNECTING, ONLINE, RECONNECTING, FAILED }
 
@@ -321,12 +320,10 @@ func has_reactions() -> bool:
 	return true
 
 
-## Aviso enquanto o servidor acorda (telas de servidores e de salas). A oferta do
-## anúncio só aparece quando houver anúncio de verdade.
+## Aviso fixo das telas de servidores e de salas, com o servidor acordando ou não. A
+## frase do anúncio aparece mesmo antes de haver anúncio de verdade (pedido do dono,
+## 18/11/2026).
 static func wake_tip() -> String:
-	var text: String = "O Bora Poker é novo e está em desenvolvimento, melhorando a cada " \
-		+ "versão. Em menos de 1 minuto o servidor estará disponível."
-	if Ads.available():
-		text += " Enquanto isso, se quiser, assista a um anúncio e ajude a melhorar os " \
-			+ "nossos servidores."
-	return text
+	return "O Bora Poker é novo e está em desenvolvimento, melhorando a cada versão. " \
+		+ "Pode levar segundos para o servidor aparecer. Enquanto isso, se quiser, " \
+		+ "assista a um anúncio e ajude a melhorar os nossos servidores."

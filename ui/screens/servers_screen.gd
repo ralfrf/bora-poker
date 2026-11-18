@@ -121,12 +121,12 @@ func _refresh() -> void:
 			first.detail = "Conectando ao servidor…"
 		LoadProbe.State.READY:
 			if probe.full:
-				first.detail = "Cheio"
+				first.detail = "Cheio agora. Tente de novo daqui a pouco."
 			else:
 				first.detail = "%d%% de lotação" % probe.pct
 				first.badge = "%d%%" % probe.pct
 		LoadProbe.State.DOWN:
-			first.detail = "Em manutenção"
+			first.detail = "Em manutenção. Confira a internet do celular e tente de novo mais tarde."
 		LoadProbe.State.OLD:
 			first.detail = "Atualize o app para usar este servidor"
 	if profile.server_url != "" and LoadProbe.normalize(profile.server_url) != LoadProbe.DEFAULT_URL:
@@ -138,18 +138,12 @@ func _refresh() -> void:
 	second.disabled = true
 	second.queue_redraw()
 	_enter.disabled = not available()
+	# O aviso fixo fica sempre (pedido do dono, 18/11/2026); cheio e sem resposta vão
+	# na linha do servidor, para caber ao lado do quadro de anúncio.
 	var tips: Array[String] = []
 	if _notice != "":
 		tips.append(_notice)
-	match probe.state:
-		LoadProbe.State.WAKING:
-			tips.append(RemoteGame.wake_tip())
-		LoadProbe.State.DOWN:
-			tips.append("O servidor não respondeu. Confira a internet do celular e tente de novo " \
-				+ "mais tarde.")
-		LoadProbe.State.READY:
-			if probe.full:
-				tips.append("O servidor está cheio agora. Tente de novo daqui a pouco.")
+	tips.append(RemoteGame.wake_tip())
 	_hint.text = "\n".join(tips)
 	_layout()
 
