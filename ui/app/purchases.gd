@@ -29,7 +29,7 @@ static func buy(_id: String, done: Callable) -> void:
 	done.call_deferred(false, [])
 
 
-## Lê de novo as compras desta conta (botão "Restaurar compras" e ao abrir a Loja).
+## Lê de novo as compras desta conta (botão "Recuperar compras" e ao abrir a Loja).
 ## done(purchases): [{"id": código do produto, "time": data da compra em segundos}].
 ## Hoje responde vazio.
 static func restore(done: Callable) -> void:

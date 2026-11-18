@@ -45,6 +45,7 @@ var _cards: Dictionary = {}   ## nível (ou a renovação) -> StoreCard
 var _table_label: Label = null
 var _table_buttons: Array[Button] = []
 var _restore: Button = null
+var _restore_hint: Label = null
 var _done: Button = null
 var _dialog: Dialog = null
 var _picker: AvatarPicker = null
@@ -94,11 +95,23 @@ func _build() -> void:
 			_refresh())
 		add_child(button)
 		_table_buttons.append(button)
+	# Recuperar compras (o "restaurar" das lojas, exigido pela Apple): a Loja já lê as
+	# compras da conta ao abrir; o botão é a segunda tentativa de quem trocou de celular
+	# ou instalou de novo.
+	_restore_hint = Label.new()
+	_restore_hint.theme_type_variation = "SmallLabel"
+	_restore_hint.text = "Trocou de celular ou
+instalou de novo?"
+	_restore_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_restore_hint.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	_restore_hint.add_theme_constant_override("line_spacing", 0)
+	add_child(_restore_hint)
 	_restore = Button.new()
-	_restore.text = "Restaurar compras"
+	_restore.text = "Recuperar compras"
+	_restore.add_theme_constant_override("h_separation", 0)
 	_restore.theme_type_variation = "QuietButton"
 	_restore.focus_mode = Control.FOCUS_NONE
-	_restore.add_theme_font_size_override("font_size", 12)
+	_restore.add_theme_font_size_override("font_size", 11)
 	_restore.clip_text = true
 	_restore.pressed.connect(_on_restore)
 	add_child(_restore)
@@ -225,6 +238,7 @@ func _layout() -> void:
 			col.size.x, CHOICE_H))
 	place(_done, Rect2(col.position.x, col.end.y - BUTTON_H, col.size.x, BUTTON_H))
 	place(_restore, Rect2(col.position.x, col.end.y - BUTTON_H - 48.0, col.size.x, 40))
+	place(_restore_hint, Rect2(col.position.x, col.end.y - BUTTON_H - 90.0, col.size.x, 38))
 
 
 func _on_purchases(list: Array) -> void:
@@ -281,8 +295,8 @@ func _on_restore() -> void:
 	_message = ""
 	Purchases.restore(func(list: Array) -> void:
 		_purchases = list
-		_message = "Compras restauradas." if not list.is_empty() \
-			else "Nenhuma compra encontrada nesta conta."
+		_message = "Compras recuperadas desta conta Google." if not list.is_empty() \
+			else "Nenhuma compra encontrada nesta conta Google."
 		_refresh())
 
 
