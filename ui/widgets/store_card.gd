@@ -129,13 +129,19 @@ func _draw() -> void:
 	draw_string(display, Vector2(0, y), title, HORIZONTAL_ALIGNMENT_CENTER, size.x,
 		_fit_size(display, title, size.x - 12.0, body_size, small), text_color)
 	y += 4.0
-	for line: String in lines:
-		for row: String in _wrap(body, line, size.x - 16.0, small):
-			y += small + 3.0
-			if y > size.y - PILL_H - (36.0 if price != "" else 12.0):
-				break
-			draw_string(body, Vector2(8, y), row, HORIZONTAL_ALIGNMENT_CENTER, size.x - 16.0,
-				small, dim)
+	# As linhas diminuem um pouco a letra, se preciso, para caberem todas (cartões estreitos).
+	var bottom: float = size.y - PILL_H - (36.0 if price != "" else 12.0)
+	var line_size: int = small
+	var rows: Array[String] = _rows(body, size.x - 16.0, line_size)
+	while line_size > small - 2 and y + rows.size() * (line_size + 3.0) > bottom:
+		line_size -= 1
+		rows = _rows(body, size.x - 16.0, line_size)
+	for row: String in rows:
+		y += line_size + 3.0
+		if y > bottom:
+			break
+		draw_string(body, Vector2(8, y), row, HORIZONTAL_ALIGNMENT_CENTER, size.x - 16.0,
+			line_size, dim)
 
 	var pill_rect: Rect2 = Rect2(10, size.y - PILL_H - 10.0, size.x - 20.0, PILL_H)
 	if price != "":
@@ -162,6 +168,14 @@ func _draw() -> void:
 		draw_style_box(pill_box, tag)
 		draw_string(strong, Vector2(tag.position.x, 13), badge, HORIZONTAL_ALIGNMENT_CENTER,
 			w, small - 1, get_theme_color("bg", T))
+
+
+## Todas as linhas, já quebradas na largura.
+func _rows(font: Font, width: float, font_size: int) -> Array[String]:
+	var out: Array[String] = []
+	for line: String in lines:
+		out.append_array(_wrap(font, line, width, font_size))
+	return out
 
 
 ## O maior tamanho de letra, entre largest e smallest, em que o texto cabe na largura.
