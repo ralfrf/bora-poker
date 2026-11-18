@@ -1,12 +1,13 @@
 extends "res://ui/screens/screen.gd"
 ## Configurações (SPEC 11.3): sons, vibração e silenciar reações. Cada troca vale na hora
 ## e fica gravada no perfil. Embaixo, o link da política de privacidade (a Play pede o link
-## também dentro do app).
+## também dentro do app), que pergunta antes de abrir o navegador.
 
 signal back
 
 const Profile := preload("res://ui/app/profile.gd")
 const ToggleRow := preload("res://ui/widgets/toggle_row.gd")
+const Dialog := preload("res://ui/widgets/dialog.gd")
 const Sfx := preload("res://ui/app/sfx.gd")
 
 const PRIVACY_URL: String = "https://ralfrf.github.io/bora-poker/privacidade/"
@@ -19,6 +20,7 @@ var _vibration: ToggleRow = null
 var _mute: ToggleRow = null
 var _privacy: Button = null
 var _done: Button = null
+var _dialog: Dialog = null
 
 
 func _init(owner_profile: Profile) -> void:
@@ -54,11 +56,19 @@ func _build() -> void:
 	_privacy.text = "Política de privacidade"
 	_privacy.theme_type_variation = "QuietButton"
 	_privacy.focus_mode = Control.FOCUS_NONE
-	_privacy.pressed.connect(func() -> void: OS.shell_open(PRIVACY_URL))
+	_privacy.pressed.connect(func() -> void:
+		_dialog.ask("Abrir a política de privacidade?", "A página abre no navegador do celular.",
+			["Abrir", "Cancelar"]))
 	add_child(_privacy)
 	_done = action_button("Pronto", true)
 	_done.pressed.connect(func() -> void: back.emit())
 	add_child(_done)
+	_dialog = Dialog.new()
+	_dialog.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_dialog.chosen.connect(func(index: int) -> void:
+		if index == 0:
+			OS.shell_open(PRIVACY_URL))
+	add_child(_dialog)
 
 
 func _save() -> void:
@@ -81,5 +91,8 @@ func _layout() -> void:
 
 
 func go_back() -> bool:
-	back.emit()
+	if _dialog.visible:
+		_dialog.visible = false
+	else:
+		back.emit()
 	return true

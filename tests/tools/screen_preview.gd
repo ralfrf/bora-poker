@@ -2,7 +2,7 @@ extends Control
 ## Abre uma tela do app com dados de exemplo, para as fotos (tests/tools/shot.gd).
 ## Nada é gravado no perfil de verdade.
 ##   --screen=profile | profile_edit | home | setup | setup_t | game | showdown |
-##            rebuy | watching | ranking | history | result | result_t | live | settings |
+##            rebuy | watching | ranking | history | result | result_t | live | settings | settings_privacy |
 ##            help | rules | reactions | spectator | paused | held | held_seat | score |
 ##            servers | servers_wake | servers_full | servers_down | servers_offline |
 ##            servers_advanced | remote_rooms |
@@ -84,7 +84,7 @@ func _ready() -> void:
 			screen = OfflineSetupScreen.new(profile)
 		"game", "showdown", "rebuy":
 			screen = _game(screen_name, seats)
-		"settings":
+		"settings", "settings_privacy":
 			screen = SettingsScreen.new(profile)
 		"help":
 			screen = HelpScreen.new(0)
@@ -128,6 +128,9 @@ func _ready() -> void:
 			screen = ShopScreen.new(profile, _shop_sample())
 	screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(screen)
+	if screen_name == "settings_privacy":
+		var privacy: Button = screen.get("_privacy")
+		privacy.pressed.emit.call_deferred()
 	if picker and screen_name == "shop":
 		screen.call_deferred("_open_claim")
 	elif picker and screen.get("_picker") != null:
