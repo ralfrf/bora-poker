@@ -95,6 +95,21 @@ func test_big_blind_walk() -> void:
 	assert_eq(table.seat_at(2).stack, 2010, "2000 - 20 + 30")
 
 
+func test_caller_wins_when_blinds_fold() -> void:
+	# Blinds 0,10 e 0,20; alguém paga 0,20 e os dois blinds desistem: ele leva 0,50.
+	var table: Table = _table(3)
+	assert_true(table.start_hand({"seed": 4, "button": 0})["ok"])
+	_act(table, 0, Hand.CALL)
+	assert_eq(PotMath.total(_view(table)), 50)
+	_act(table, 1, Hand.FOLD)
+	_act(table, 2, Hand.FOLD)
+	var view: Dictionary = _view(table)
+	var groups: Array = PotMath.groups(view["result"]["payouts"], view["result"]["pots"],
+		view["result"]["returned"])
+	assert_eq(groups, [{"seats": [0], "amount": 50}], "quem pagou leva os 0,50")
+	assert_eq(table.seat_at(0).stack, 2030, "2000 - 20 + 50")
+
+
 func test_showdown_has_nothing_returned() -> void:
 	var table: Table = _table(2)
 	assert_true(table.start_hand({"seed": 3, "button": 0})["ok"])
