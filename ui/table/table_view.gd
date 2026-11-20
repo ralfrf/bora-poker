@@ -675,6 +675,12 @@ func reactions_corner() -> Vector2:
 ## Fim de mão: quem ganhou e quanto, embaixo das cartas comunitárias. Pote dividido
 ## numa linha só; potes paralelos ganhos por pessoas diferentes, uma linha para cada uma.
 func _show_banner(result: Dictionary, members: Dictionary) -> void:
+	if _banner_hold != null:
+		_banner_hold.kill()
+		_banner_hold = null
+	_total.modulate.a = 1.0
+	for banner: AmountView in _banners:
+		banner.modulate.a = 1.0
 	var groups: Array = PotMath.groups(result.get("payouts", []), result.get("pots", []))
 	if groups.size() > BANNER_LINES:
 		# Mais ganhadores do que linhas: os menores valores ficam juntos na última.
@@ -1049,6 +1055,8 @@ func _animate(events: Array, table: Dictionary, board_count: int, live: bool) ->
 			_fly_chips(start, _slot_point(slot), 0.0, 0.3)
 			if int(back[seat_index]) >= int(_last_amounts.get(slot, 0)) 					and not paid.has(slot):
 				to_pot.erase(slot)
+		if ended and not back.is_empty():
+			_hold_banner(PotMath.center(table))
 		for slot: int in to_pot:
 			_fly_chips(_slot_point(slot) if not _last_bets.has(slot) else to_pot[slot],
 				_pot_point(), 0.0)
@@ -1126,6 +1134,25 @@ func _fly_chips(from: Vector2, to: Vector2, delay: float, duration: float = 0.38
 
 
 var _pot_tween: Tween = null
+var _banner_hold: Tween = null
+
+
+## Todos desistiram depois de uma aposta: a parte que ninguém pagou volta para o lugar e
+## o "Pote" embaixo das cartas cai para o que foi entregue antes de aparecer quem ganhou,
+## como nos sites. Sem isso, "Pote 90" virava "ganha 50" no mesmo lugar e parecia erro.
+func _hold_banner(amount: int) -> void:
+	_total.amount = amount
+	_total.visible = amount > 0
+	_total.modulate.a = 1.0
+	_total.place_at(_banner_point())
+	for banner: AmountView in _banners:
+		banner.modulate.a = 0.0
+	_banner_hold = create_tween()
+	_banner_hold.tween_interval(0.9)
+	_banner_hold.tween_property(_total, "modulate:a", 0.0, 0.15)
+	_banner_hold.tween_callback(func() -> void: _total.visible = false)
+	for banner: AmountView in _banners:
+		_banner_hold.parallel().tween_property(banner, "modulate:a", 1.0, 0.2)
 
 
 func _pot_fade(alpha: float, delay: float, duration: float) -> void:

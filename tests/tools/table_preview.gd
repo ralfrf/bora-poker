@@ -4,6 +4,7 @@ extends Control
 ## --table=rubi mostra uma mesa da Loja (ui/theme/tables.gd).
 ## --sidepots mostra uma mão com potes paralelos (com --ended, o fim dela, ganhos por
 ## pessoas diferentes).
+## --foldout mostra todos desistindo depois de um aumento (a parte não paga volta).
 
 const Directions := preload("res://ui/theme/directions.gd")
 const Tables := preload("res://ui/theme/tables.gd")
@@ -15,6 +16,7 @@ var _index: int = 0
 var _board: int = 4
 var _sidepots: bool = false
 var _ended: bool = false
+var _foldout: bool = false
 var _table: TableView = null
 var _label: Label = null
 
@@ -45,6 +47,8 @@ func _ready() -> void:
 			_sidepots = true
 		elif arg == "--ended":
 			_ended = true
+		elif arg == "--foldout":
+			_foldout = true
 	_apply()
 	if sheet:
 		_table.open_bet_sheet()
@@ -83,3 +87,26 @@ func _apply() -> void:
 			state["events"] = []
 	_table.render(state)
 	_label.text = ""
+	if _foldout:
+		# Todos desistem depois do aumento do Tião: os 36.000 que ninguém pagou voltam
+		# para ele e o "Pote" cai para o que ele leva antes do aviso.
+		for i in 3:
+			await get_tree().process_frame
+		var table: Dictionary = state["table"]
+		var pot: int = int(table["pot"])
+		for entry: Dictionary in table["seats"]:
+			if int(entry["seat"]) != 5:
+				entry["folded"] = true
+			entry["bet"] = 0
+		var back: int = 36000
+		table["seats"][5]["stack"] = int(table["seats"][5]["stack"]) + pot
+		table["live"] = false
+		table["pot"] = 0
+		table["to_act"] = -1
+		table["result"] = {"showdown": false, "payouts": [{"seat": 5, "amount": pot - back}],
+			"pots": [{"amount": pot - back, "winners": [5]}]}
+		state["you"].erase("legal")
+		state["events"] = [{"type": "action", "seat": 0, "action": "fold", "amount": 0},
+			{"type": "refund", "seat": 5, "amount": back},
+			{"type": "end", "pots": table["result"]["pots"], "payouts": table["result"]["payouts"]}]
+		_table.render(state)
