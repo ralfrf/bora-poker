@@ -4,7 +4,7 @@ extends Control
 ## --table=rubi mostra uma mesa da Loja (ui/theme/tables.gd).
 ## --sidepots mostra uma mão com potes paralelos (com --ended, o fim dela, ganhos por
 ## pessoas diferentes).
-## --foldout mostra todos desistindo depois de um aumento (a parte não paga volta).
+## --foldout mostra todos desistindo depois de um aumento (quem aumentou leva tudo).
 
 const Directions := preload("res://ui/theme/directions.gd")
 const Tables := preload("res://ui/theme/tables.gd")
@@ -88,8 +88,8 @@ func _apply() -> void:
 	_table.render(state)
 	_label.text = ""
 	if _foldout:
-		# Todos desistem depois do aumento do Tião: os 36.000 que ninguém pagou voltam
-		# para ele e o "Pote" cai para o que ele leva antes do aviso.
+		# Todos desistem depois do aumento do Tião: ele leva tudo o que estava na mesa
+		# (o motor devolve os 36.000 que ninguém pagou e paga o resto).
 		for i in 3:
 			await get_tree().process_frame
 		var table: Dictionary = state["table"]
@@ -104,7 +104,7 @@ func _apply() -> void:
 		table["pot"] = 0
 		table["to_act"] = -1
 		table["result"] = {"showdown": false, "payouts": [{"seat": 5, "amount": pot - back}],
-			"pots": [{"amount": pot - back, "winners": [5]}]}
+			"pots": [{"amount": pot - back, "winners": [5]}], "returned": [{"seat": 5, "amount": back}]}
 		state["you"].erase("legal")
 		state["events"] = [{"type": "action", "seat": 0, "action": "fold", "amount": 0},
 			{"type": "refund", "seat": 5, "amount": back},

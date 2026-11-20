@@ -16,6 +16,7 @@ extends RefCounted
 ##          ou {seat, action, amount, to, all_in}
 ##    board, revealed: [{seat, cards}], shown: [{seat, cards, name, best}],
 ##    refunds: [{seat, amount}], payouts: [{seat, amount}],
+##    returned: [{seat, amount}],                  aposta não paga de quem ficou sozinho
 ##    pots: [{amount, winners}],                   quem ganhou cada pote
 ##    showdown: bool, cancelled: bool}
 ## for_member acrescenta "mine": as suas cartas, se você jogou a mão.
@@ -89,6 +90,10 @@ func note(events: Array, table: Table, ids: Dictionary, names: Dictionary) -> vo
 						winners.append(int(seat))
 					pots.append({"amount": int(pot["amount"]), "winners": winners})
 				_open["pots"] = pots
+				var returned: Array = []
+				for back: Dictionary in event.get("returned", []):
+					returned.append({"seat": int(back["seat"]), "amount": int(back["amount"])})
+				_open["returned"] = returned
 				var board: Array = []
 				for street: Dictionary in streets:
 					board.append_array(street["cards"])
@@ -139,7 +144,7 @@ func _begin(table: Table, ids: Dictionary, names: Dictionary) -> void:
 		"big_blind": hand.big_blind, "button": hand.button, "players": players,
 		"streets": [{"street": Hand.STREET_NAMES[0], "cards": [], "actions": []}],
 		"board": [], "revealed": [], "shown": [], "refunds": [], "payouts": [],
-		"pots": [], "showdown": false, "cancelled": false,
+		"returned": [], "pots": [], "showdown": false, "cancelled": false,
 	}
 
 

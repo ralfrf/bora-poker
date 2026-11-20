@@ -9,6 +9,7 @@ const Clock := preload("res://server/clock.gd")
 const Room := preload("res://server/room.gd")
 const Protocol := preload("res://server/protocol.gd")
 const Tables := preload("res://ui/theme/tables.gd")
+const PotMath := preload("res://ui/table/pot_math.gd")
 
 const FAST: Dictionary = {"hand_gap_ms": 0, "showdown_gap_ms": 0, "bot_min_ms": 0,
 	"bot_max_ms": 0, "bot_evaluations": 120}
@@ -190,3 +191,73 @@ func test_room_with_friends_always_starts_from_the_default() -> void:
 	assert_eq(options["rebuy_limit"], -1, "recompras sem limite")
 	assert_eq(OfflineOptions.clean(OfflineOptions.ROOM_DEFAULTS), OfflineOptions.ROOM_DEFAULTS,
 		"todas as escolhas existem nas listas")
+
+
+## Todos desistem (antes ou depois do flop): o aviso diz quanto o ganhador levou, e é o
+## mesmo valor do "Pote" na tela logo antes e do que entra nas fichas dele. Partida real,
+## com o humano aumentando antes do flop e bots que pagam, aumentam e desistem.
+func test_offline_fold_out_pays_the_pot_shown() -> void:
+	var clock: Clock = Clock.new(true)
+	var game: OfflineGame = _game(clock)
+	game.begin("Rafa", 1, "aparelho-teste-0011", OfflineOptions.build(OfflineOptions.clean({"seats": 5})))
+	var prev: Dictionary = {}
+	var fold_outs: int = 0
+	var mine: int = 0
+	var walks: int = 0
+	var after_flop: int = 0
+	var wrong: Array[String] = []
+	for i in 20000:
+		clock.advance(250)
+		for message: Dictionary in game.update():
+			if message["t"] != Protocol.STATE:
+				continue
+			var table: Dictionary = message["table"]
+			var ended: bool = false
+			for event: Dictionary in message["events"]:
+				if event["type"] == "end":
+					ended = true
+			if ended and not prev.is_empty() and not table["result"].get("showdown", true) \
+					and table["result"]["payouts"].size() == 1:
+				var result: Dictionary = table["result"]
+				var winner: int = int(result["payouts"][0]["seat"])
+				var groups: Array = PotMath.groups(result["payouts"], result["pots"], result["returned"])
+				var shown_pot: int = PotMath.total(prev)
+				var before: int = -1
+				var after: int = -1
+				for entry: Dictionary in prev["seats"]:
+					if int(entry["seat"]) == winner:
+						before = int(entry["stack"])
+				for entry: Dictionary in table["seats"]:
+					if int(entry["seat"]) == winner:
+						after = int(entry["stack"])
+				var said: int = int(groups[0]["amount"])
+				if groups.size() != 1 or said != shown_pot or after - before != said \
+						or PotMath.center(table) != said:
+					wrong.append("mão %d: Pote %d, aviso %d, fichas +%d, centro %d" % [
+						int(table["hand"]), shown_pot, said, after - before, PotMath.center(table)])
+				fold_outs += 1
+				if winner == int(message["you"].get("seat", -1)):
+					mine += 1
+				if String(prev["street"]) != "preflop":
+					after_flop += 1
+				elif result["returned"].size() == 1 and int(result["returned"][0]["amount"]) \
+						== int(table["big_blind"]) - int(table["small_blind"]):
+					walks += 1
+			if table.get("live", false):
+				prev = table
+			var you: Dictionary = message["you"]
+			if you.has("legal"):
+				var legal: Dictionary = you["legal"]
+				if String(table["street"]) == "preflop" and legal["can_raise"]:
+					game.act("raise", int(legal["min_to"]))
+				else:
+					game.act("check" if legal["can_check"] else "fold", 0)
+			elif you.has("rebuy_ms"):
+				game.rebuy(true)
+		if fold_outs >= 40 and mine >= 5 and after_flop >= 3 or not game.final.is_empty():
+			break
+	assert_eq(wrong, [] as Array[String], "aviso, \"Pote\" e fichas batem")
+	assert_true(fold_outs >= 40, "mãos em que todos desistiram (%d)" % fold_outs)
+	assert_true(mine >= 5, "você levou o pote com todos desistindo (%d)" % mine)
+	assert_true(after_flop >= 3, "todos desistiram depois do flop (%d)" % after_flop)
+	print("    desistências: %d (suas %d, depois do flop %d, big blind %d)" % [fold_outs, mine, after_flop, walks])

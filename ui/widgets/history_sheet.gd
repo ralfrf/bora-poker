@@ -185,7 +185,8 @@ func _show_message(text: String) -> void:
 func _outcome(record: Dictionary) -> Array:
 	if record.get("cancelled", false):
 		return ["Cancelada: fichas devolvidas", -1, false]
-	var groups: Array = PotMath.groups(record.get("payouts", []), record.get("pots", []))
+	var groups: Array = PotMath.groups(record.get("payouts", []), record.get("pots", []),
+		record.get("returned", []))
 	var names: Array[String] = []
 	var total: int = 0
 	var me: bool = false
@@ -278,8 +279,17 @@ func _show_detail(record: Dictionary) -> void:
 		_cards(row, entry["cards"])
 		if shown_names.has(seat):
 			row.add_child(_label("  " + shown_names[seat], "SmallLabel"))
+	# Todos desistiram: a aposta não paga de quem ficou entra no que ele ganha (é sempre a
+	# última devolução da mão), como no aviso da mesa.
+	var returned: Array = record.get("returned", [])
+	var back: Dictionary = {}
+	for entry: Dictionary in returned:
+		back[int(entry["seat"])] = int(back.get(int(entry["seat"]), 0)) + int(entry["amount"])
+	var refunds: Array = record.get("refunds", [])
+	if not returned.is_empty() and not refunds.is_empty():
+		refunds = refunds.slice(0, refunds.size() - 1)
 	if not record.get("cancelled", false):
-		for refund: Dictionary in record.get("refunds", []):
+		for refund: Dictionary in refunds:
 			var row: HBoxContainer = _row()
 			row.add_child(_label(_nick(_player(record, int(refund["seat"]))), "NameLabel"))
 			row.add_child(_label(" recebe de volta a aposta não paga", "SmallLabel"))
@@ -289,7 +299,7 @@ func _show_detail(record: Dictionary) -> void:
 		var row: HBoxContainer = _row()
 		row.add_child(_label(_nick(_player(record, seat)), "NameLabel"))
 		row.add_child(_label(" ganha", "SmallLabel"))
-		_amount(row, int(payout["amount"]))
+		_amount(row, int(payout["amount"]) + int(back.get(seat, 0)))
 		if shown_names.has(seat):
 			row.add_child(_label(" com " + shown_names[seat].to_lower(), "SmallLabel"))
 		elif not record.get("showdown", false):

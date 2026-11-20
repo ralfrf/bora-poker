@@ -493,8 +493,7 @@ func _draw() -> int:
 func _advance(from_seat: int, events: Array[Dictionary]) -> void:
 	if _live_count() == 1:
 		to_act = -1
-		_refund_uncalled(events)
-		_settle(false, events)
+		_settle(false, events, _refund_uncalled(events))
 		return
 	var next: int = _next_to_act(from_seat)
 	if next != -1:
@@ -541,24 +540,28 @@ func _deal_street(events: Array[Dictionary]) -> void:
 	events.append({"type": "street", "street": STREET_NAMES[street], "cards": cards})
 
 
-func _refund_uncalled(events: Array[Dictionary]) -> void:
+## Devolve a quem apostou a parte que ninguém pagou. Devolve {seat, amount} (vazio sem devolução).
+func _refund_uncalled(events: Array[Dictionary]) -> Dictionary:
 	var bets: Array[Dictionary] = []
 	for player in players:
 		bets.append({"seat": player.seat, "amount": player.bet, "folded": player.folded})
 	var refund: Dictionary = Pots.uncalled(bets)
 	var amount: int = refund["amount"]
 	if amount <= 0:
-		return
+		return {}
 	var owner: Player = player_at(refund["seat"])
 	owner.bet -= amount
 	owner.total -= amount
 	owner.stack += amount
 	owner.all_in = false
 	events.append({"type": "refund", "seat": owner.seat, "amount": amount})
+	return {"seat": owner.seat, "amount": amount}
 
 
-## Paga os potes e encerra a mão.
-func _settle(showdown: bool, events: Array[Dictionary]) -> void:
+## Paga os potes e encerra a mão. returned: a aposta não paga devolvida a quem ficou
+## sozinho quando todos desistiram; vai no resultado para a tela dizer que ele levou
+## tudo o que estava na mesa (o pote mais as próprias fichas que voltaram).
+func _settle(showdown: bool, events: Array[Dictionary], returned: Dictionary = {}) -> void:
 	var scores: Dictionary = {}
 	for player in players:
 		if not player.folded:
@@ -604,13 +607,15 @@ func _settle(showdown: bool, events: Array[Dictionary]) -> void:
 		"payouts": payouts,
 		"nets": nets,
 		"shown": shown,
+		"returned": [returned] if not returned.is_empty() else [],
 	}
 	to_act = -1
 	street = FINISHED
 	finished = true
 	if showdown:
 		events.append({"type": "showdown", "shown": shown})
-	events.append({"type": "end", "pots": pots, "payouts": payouts})
+	events.append({"type": "end", "pots": pots, "payouts": payouts,
+		"returned": result["returned"].duplicate(true)})
 
 
 ## Quem mostra no showdown, na ordem em que mostra (como nos sites de poker, com as

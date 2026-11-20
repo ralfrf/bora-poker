@@ -40,15 +40,24 @@ static func center_pots(table: Dictionary) -> Array[int]:
 			else:
 				amounts[0] += missing
 	else:
-		for pot: Dictionary in table.get("result", {}).get("pots", []):
+		var result: Dictionary = table.get("result", {})
+		for pot: Dictionary in result.get("pots", []):
 			if int(pot.get("amount", 0)) > 0:
 				amounts.append(int(pot["amount"]))
+		# Todos desistiram: a aposta não paga de quem ficou também está no pote que ele leva.
+		var back: int = returned_total(result.get("returned", []))
+		if back > 0:
+			if amounts.is_empty():
+				amounts.append(back)
+			else:
+				amounts[0] += back
 	return amounts
 
 
 ## Fichas no centro da mesa. Durante a mão, só o que já foi recolhido das rodadas
 ## anteriores: as apostas da rodada aparecem na frente de cada lugar e não contam duas
-## vezes. No fim da mão, o que foi entregue (sem a aposta não paga, que voltou).
+## vezes. No fim da mão, o que foi entregue, com a aposta não paga de quem ficou sozinho
+## quando todos desistiram (ele leva tudo o que estava na mesa).
 ## table: a parte pública da visão (server/view.gd).
 static func center(table: Dictionary) -> int:
 	if table.get("live", false):
@@ -56,9 +65,18 @@ static func center(table: Dictionary) -> int:
 		for entry: Dictionary in table.get("seats", []):
 			collected -= int(entry.get("bet", 0))
 		return maxi(collected, 0)
-	var total: int = 0
-	for payout: Dictionary in table.get("result", {}).get("payouts", []):
+	var result: Dictionary = table.get("result", {})
+	var total: int = returned_total(result.get("returned", []))
+	for payout: Dictionary in result.get("payouts", []):
 		total += int(payout.get("amount", 0))
+	return total
+
+
+## Soma das apostas não pagas devolvidas a quem ficou sozinho no fim da mão.
+static func returned_total(returned: Array) -> int:
+	var total: int = 0
+	for back: Dictionary in returned:
+		total += int(back.get("amount", 0))
 	return total
 
 
@@ -76,10 +94,21 @@ static func refunds(events: Array) -> Dictionary:
 ## o menor. Fica numa linha só ("dividem") quando todos os potes foram divididos entre
 ## as mesmas pessoas; com potes paralelos ganhos por pessoas diferentes, cada uma tem a
 ## sua linha, com o que levou (somar tudo e dizer "dividem" estava errado).
-## payouts: [{seat, amount}]; pots: [{winners}] do resultado (vazio em registro antigo).
-static func groups(payouts: Array, pots: Array) -> Array:
+## Quando todos desistem, quem ficou leva também a própria aposta que ninguém pagou: o
+## aviso diz o mesmo valor do "Pote" e do que entra nas fichas dele.
+## payouts: [{seat, amount}]; pots: [{winners}] do resultado (vazio em registro antigo);
+## returned: [{seat, amount}] do resultado (vazio em registro antigo ou com showdown).
+static func groups(payouts: Array, pots: Array, returned: Array = []) -> Array:
 	if payouts.is_empty():
 		return []
+	var back: Dictionary = {}
+	for entry: Dictionary in returned:
+		back[int(entry["seat"])] = int(back.get(int(entry["seat"]), 0)) + int(entry["amount"])
+	var full: Array = []
+	for payout: Dictionary in payouts:
+		var seat: int = int(payout["seat"])
+		full.append({"seat": seat, "amount": int(payout["amount"]) + int(back.get(seat, 0))})
+	payouts = full
 	var seats: Array = []
 	var total: int = 0
 	for payout: Dictionary in payouts:

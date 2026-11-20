@@ -53,7 +53,8 @@ func _act(table: Table, seat: int, action: String, amount: int = 0) -> Array:
 
 func test_everyone_folds_after_a_raise() -> void:
 	# Blinds 10/20; o botão aumenta para 60 e os dois blinds desistem. Na mesa ficaram
-	# 10 + 20 + 60, mas 40 do aumento ninguém pagou e voltam para ele: o pote é 50.
+	# 10 + 20 + 60 = 90 e ele leva tudo: o motor paga 50 e devolve os 40 que ninguém
+	# pagou, mas a tela diz 90, o mesmo do "Pote" e do que entra nas fichas dele.
 	var table: Table = _table(3)
 	assert_true(table.start_hand({"seed": 1, "button": 0})["ok"])
 	var view: Dictionary = _view(table)
@@ -64,16 +65,48 @@ func test_everyone_folds_after_a_raise() -> void:
 	view = _view(table)
 	assert_eq(PotMath.center(view), 0, "o aumento também fica na frente do lugar")
 	assert_eq(PotMath.center(view) + _bets(view), 90)
+	assert_eq(PotMath.total(view), 90, "\"Pote\" com as apostas da rodada")
 
 	_act(table, 1, Hand.FOLD)
 	var events: Array = _act(table, 2, Hand.FOLD)
 	view = _view(table)
 	var refunds: Dictionary = PotMath.refunds(events)
 	assert_eq(refunds, {0: 40}, "a parte não paga do aumento volta para quem aumentou")
-	assert_eq(PotMath.center(view), 50, "no fim, o centro mostra o que foi entregue")
-	var groups: Array = PotMath.groups(view["result"]["payouts"], view["result"]["pots"])
-	assert_eq(groups, [{"seats": [0], "amount": 50}], "o aviso diz que ele levou 50")
-	assert_eq(table.seat_at(0).stack, 2030, "e as fichas dele batem: 2000 - 20 + 50")
+	assert_eq(view["result"]["returned"], [{"seat": 0, "amount": 40}], "o resultado guarda a devolução")
+	assert_eq(PotMath.center(view), 90, "no fim, o centro mostra tudo o que ele leva")
+	assert_eq(PotMath.center_pots(view), [90] as Array[int])
+	var groups: Array = PotMath.groups(view["result"]["payouts"], view["result"]["pots"],
+		view["result"]["returned"])
+	assert_eq(groups, [{"seats": [0], "amount": 90}], "o aviso diz que ele levou 90, como o \"Pote\"")
+	assert_eq(table.seat_at(0).stack, 2030, "e as fichas dele batem: 2000 - 60 + 90")
+
+
+func test_big_blind_walk() -> void:
+	# Todos desistem até o big blind: na mesa, 10 + 20 = 30; ele leva os 30.
+	var table: Table = _table(3)
+	assert_true(table.start_hand({"seed": 2, "button": 0})["ok"])
+	_act(table, 0, Hand.FOLD)
+	assert_eq(PotMath.total(_view(table)), 30)
+	_act(table, 1, Hand.FOLD)
+	var view: Dictionary = _view(table)
+	var groups: Array = PotMath.groups(view["result"]["payouts"], view["result"]["pots"],
+		view["result"]["returned"])
+	assert_eq(groups, [{"seats": [2], "amount": 30}], "o big blind leva os 30 do pote")
+	assert_eq(table.seat_at(2).stack, 2010, "2000 - 20 + 30")
+
+
+func test_showdown_has_nothing_returned() -> void:
+	var table: Table = _table(2)
+	assert_true(table.start_hand({"seed": 3, "button": 0})["ok"])
+	_act(table, 0, Hand.CALL)
+	_act(table, 1, Hand.CHECK)
+	for street in 3:
+		_act(table, 1, Hand.CHECK)
+		_act(table, 0, Hand.CHECK)
+	var view: Dictionary = _view(table)
+	assert_true(view["result"]["showdown"])
+	assert_eq(view["result"]["returned"], [], "showdown: nada devolvido a quem ganhou")
+	assert_eq(PotMath.center(view), 40)
 
 
 func test_collected_chips_stay_in_the_center() -> void:
@@ -140,7 +173,9 @@ func test_history_keeps_who_won_each_pot() -> void:
 	log.note(_act(table, 2, Hand.FOLD), table, ids, names)
 	var record: Dictionary = log.for_member("j0")[0]
 	assert_eq(record["pots"], [{"amount": 50, "winners": [0]}])
-	assert_eq(PotMath.groups(record["payouts"], record["pots"]), [{"seats": [0], "amount": 50}])
+	assert_eq(record["returned"], [{"seat": 0, "amount": 40}], "o histórico guarda a devolução")
+	assert_eq(PotMath.groups(record["payouts"], record["pots"], record["returned"]),
+		[{"seats": [0], "amount": 90}], "a lista diz 90, como a mesa")
 	# Registro antigo, sem os potes: cada um com o seu valor.
 	assert_eq(PotMath.groups([{"seat": 2, "amount": 30}, {"seat": 1, "amount": 70}], []),
 		[{"seats": [1], "amount": 70}, {"seats": [2], "amount": 30}])
